@@ -439,7 +439,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.39"%game.coins
+	stats.text="Gold %d   v0.1.40"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -854,7 +854,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.39","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.40","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -1182,14 +1182,27 @@ func build_quick_menu():
 	panel.position=Vector2(55,82)
 	panel.size=Vector2(1040,112)
 	panel.z_index=20
+	var frame := StyleBoxTexture.new()
+	frame.texture=preload("res://assets/menu_icons/quick_menu_frame.svg")
+	for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
+		frame.set_texture_margin(side,12)
+		frame.set_content_margin(side,0)
+	panel.add_theme_stylebox_override("panel",frame)
 	var margin := MarginContainer.new()
 	for side in ["left","right","top","bottom"]:
 		margin.add_theme_constant_override("margin_"+side,8)
 	panel.add_child(margin)
 	var row := HBoxContainer.new()
 	row.layout_direction=Control.LAYOUT_DIRECTION_RTL
-	row.add_theme_constant_override("separation",6)
+	row.add_theme_constant_override("separation",0)
 	margin.add_child(row)
+	var menu_font := FontVariation.new()
+	menu_font.base_font=root.theme.default_font
+	menu_font.variation_embolden=0.45
+	var idle := StyleBoxEmpty.new()
+	var highlight := StyleBoxFlat.new()
+	highlight.bg_color=Color("7d293340")
+	highlight.set_corner_radius_all(6)
 	for key in MENU_PAGES:
 		var b := Button.new()
 		b.text=trn(key)
@@ -1198,12 +1211,36 @@ func build_quick_menu():
 		b.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		b.clip_text=true
 		b.icon=load("res://assets/menu_icons/"+key.to_lower()+".png")
-		if key in ["Market","Trade"]:
-			b.icon=load(UHD+key.to_lower()+".png")
-		b.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
-		b.vertical_icon_alignment=VERTICAL_ALIGNMENT_TOP
+		b.add_theme_stylebox_override("normal",idle)
+		b.add_theme_stylebox_override("focus",idle)
+		b.add_theme_stylebox_override("hover",highlight)
+		b.add_theme_stylebox_override("pressed",highlight)
+		# Keep the native button for touch, keyboard and accessibility; render
+		# its icon and caption together as one vertically centered stack.
+		for color_key in ["font_color","font_hover_color","font_pressed_color","font_focus_color","icon_normal_color","icon_hover_color","icon_pressed_color","icon_focus_color"]:
+			b.add_theme_color_override(color_key,Color.TRANSPARENT)
 		b.add_theme_constant_override("icon_max_width",48)
-		b.add_theme_font_size_override("font_size",16)
+		var stack := VBoxContainer.new()
+		stack.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		stack.alignment=BoxContainer.ALIGNMENT_CENTER
+		stack.add_theme_constant_override("separation",2)
+		b.add_child(stack)
+		stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var art := TextureRect.new()
+		art.texture=b.icon
+		art.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.custom_minimum_size=Vector2(54,54)
+		art.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		stack.add_child(art)
+		var caption := Label.new()
+		caption.text=b.text
+		caption.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		caption.add_theme_font_override("font",menu_font)
+		caption.add_theme_font_size_override("font_size",16)
+		caption.add_theme_color_override("font_color",Color("e8e9ec"))
+		caption.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		stack.add_child(caption)
 		b.pressed.connect(func():open_page(key))
 		row.add_child(b)
 		menu_items[key]=b
