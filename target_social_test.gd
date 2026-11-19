@@ -25,6 +25,9 @@ func run():
 	h.refresh_target_status(true)
 	assert(h.target_portrait_image.visible and is_instance_valid(h.target_model))
 	assert(h.target_menu_button.visible and not h.target_menu.visible)
+	assert(is_equal_approx(h.target_menu_button.get_global_rect().get_center().x,h.target_portrait_art.get_global_rect().get_center().x))
+	assert(h.target_menu_button.get_global_rect().position.y>=h.target_portrait_art.get_global_rect().end.y)
+	assert(is_instance_valid(h.target_menu_icon.texture))
 	for i in range(3):
 		tap(h.target_menu_button.get_global_rect().get_center())
 		assert(h.target_menu.visible)
