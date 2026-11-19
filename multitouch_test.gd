@@ -18,6 +18,15 @@ func run():
 	world.ui.close_page()
 	for i in range(10): await physics_frame
 	var hud = world.ui
+	var circular: Array[Button]=[]
+	for b in hud.buttons:
+		if b.get_meta("round",false):
+			assert(is_equal_approx(b.size.x,b.size.y),str(b.text,b.size))
+			assert(Rect2(Vector2.ZERO,Vector2(1280,720)).encloses(b.get_global_rect()))
+			for other in circular:
+				assert(not b.get_global_rect().intersects(other.get_global_rect()),"Default buttons overlap")
+			circular.append(b)
+	assert(circular.size()==14 and is_instance_valid(hud.joystick_knob.texture))
 	var jump_button: Button
 	var run_button: Button
 	var dash_button: Button

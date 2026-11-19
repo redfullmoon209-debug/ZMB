@@ -9,6 +9,7 @@ var panel: PanelContainer
 var body: VBoxContainer
 var chat: LineEdit
 var joystick: Button
+var joystick_knob: TextureRect
 var lang := 1
 var selected_page := ""
 var buttons: Array[Button] = []
@@ -44,6 +45,12 @@ func localized(th: String, en: String, zh: String) -> String:
 
 func _ready():
 	config.load("user://zmb.cfg")
+	# Old rectangular layouts must not override the new circular defaults.
+	if int(config.get_value("ui","hud_layout",0))<2:
+		for section in ["position","size","scale","opacity"]:
+			if config.has_section(section): config.erase_section(section)
+		config.set_value("ui","hud_layout",2)
+		config.save("user://zmb.cfg")
 	lang=int(config.get_value("ui","lang",1))
 	root=Control.new()
 	add_child(root)
@@ -88,21 +95,41 @@ func _ready():
 	zone_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	zone_label.add_theme_font_size_override("font_size",21)
 	make_button("MENU",Vector2(1110,18),Vector2(145,52),func(): open_page("Menu"))
-	joystick=make_button("◉",Vector2(40,480),Vector2(150,150),func(): pass)
+	joystick=make_button("◉",Vector2(65,410),Vector2(226,226),func(): pass)
+	joystick.add_theme_color_override("font_color",Color.TRANSPARENT)
+	joystick.add_theme_color_override("font_hover_color",Color.TRANSPARENT)
+	joystick.add_theme_color_override("font_pressed_color",Color.TRANSPARENT)
+	for state in ["normal","hover","pressed","focus"]:
+		joystick.add_theme_stylebox_override(state,StyleBoxEmpty.new())
+	var joystick_base := TextureRect.new()
+	joystick_base.texture=preload("res://assets/controls/joystick_base.png")
+	joystick_base.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	joystick_base.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	joystick_base.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	joystick.add_child(joystick_base)
+	joystick_base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	joystick_knob=TextureRect.new()
+	joystick_knob.texture=preload("res://assets/controls/joystick_thumb.png")
+	joystick_knob.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	joystick_knob.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	joystick_knob.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	joystick_knob.size=Vector2(76,76)
+	joystick.add_child(joystick_knob)
 	joystick.gui_input.connect(_stick_event)
-	make_button("ATTACK",Vector2(1090,500),Vector2(125,95),func(): game.attack(0))
+	make_button("ATTACK",Vector2(1100,505),Vector2(124,124),func(): game.attack(0))
+	var skills := [Vector2(975,545),Vector2(984,430),Vector2(1104,397)]
 	for i in range(3):
-		make_button("SKILL %d"%(i+1),Vector2(880+i*110,405),Vector2(100,60),func():game.attack(i+1))
-	make_button("JUMP",Vector2(1090,325),Vector2(95,55),func():game.jump_requested=true)
-	make_button("DASH",Vector2(1190,325),Vector2(80,55),func():game.dash_time=0.18)
-	make_button("RUN",Vector2(220,550),Vector2(80,55),func():game.run_mode=not game.run_mode)
-	make_button("LOOT",Vector2(980,550),Vector2(90,55),func():game.collect())
-	make_button("AUTO",Vector2(880,550),Vector2(90,55),func():
+		make_button("SKILL %d"%(i+1),skills[i],Vector2(88,88),func():game.attack(i+1))
+	make_button("JUMP",Vector2(977,323),Vector2(72,72),func():game.jump_requested=true)
+	make_button("DASH",Vector2(1109,287),Vector2(72,72),func():game.dash_time=0.18)
+	make_button("RUN",Vector2(607,577),Vector2(64,64),func():game.run_mode=not game.run_mode)
+	make_button("LOOT",Vector2(923,211),Vector2(70,70),func():game.collect())
+	make_button("AUTO",Vector2(1003,211),Vector2(70,70),func():
 		if not game.in_safe_zone(): game.auto=not game.auto)
-	make_button("MONSTER",Vector2(1000,250),Vector2(125,55),func():game.choose_target())
-	make_button("PLAYER",Vector2(1135,250),Vector2(120,55),func(): target_label.text="No online players (demo)")
-	make_button("HP",Vector2(480,565),Vector2(80,55),func():game.hp=minf(100,game.hp+35))
-	make_button("MP",Vector2(570,565),Vector2(80,55),func():game.mp=minf(100,game.mp+35))
+	make_button("MONSTER",Vector2(1083,211),Vector2(70,70),func():game.choose_target())
+	make_button("PLAYER",Vector2(1163,211),Vector2(70,70),func(): target_label.text="No online players (demo)")
+	make_button("HP",Vector2(529,577),Vector2(64,64),func():game.hp=minf(100,game.hp+35))
+	make_button("MP",Vector2(685,577),Vector2(64,64),func():game.mp=minf(100,game.mp+35))
 	game.set_camera_follow(bool(config.get_value("camera","follow",false)))
 	camera_mode_button=make_button("CAMERA",Vector2(1040,105),Vector2(215,56),func():
 		game.set_camera_follow(not game.camera_follow)
@@ -139,6 +166,23 @@ func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	b.size=config.get_value("size",t,s)
 	b.scale=config.get_value("scale",t,Vector2.ONE)
 	b.modulate.a=config.get_value("opacity",t,0.82)
+	if t not in ["MENU","CAMERA"]:
+		b.set_meta("round",true)
+		var round_style := StyleBoxFlat.new()
+		round_style.bg_color=Color("252a2e99")
+		round_style.border_color=Color("b5b9bd")
+		round_style.set_border_width_all(2)
+		round_style.set_corner_radius_all(int(s.x/2))
+		round_style.set_content_margin_all(0)
+		b.add_theme_stylebox_override("normal",round_style)
+		var pressed_style := round_style.duplicate() as StyleBoxFlat
+		pressed_style.bg_color=Color("6e3039bb")
+		b.add_theme_stylebox_override("pressed",pressed_style)
+		b.add_theme_stylebox_override("hover",round_style)
+		b.add_theme_stylebox_override("focus",StyleBoxEmpty.new())
+		b.add_theme_font_size_override("font_size",12 if t in ["MONSTER","PLAYER"] else 16)
+		b.clip_text=true
+		b.set_deferred("size",config.get_value("size",t,s))
 	b.pressed.connect(action)
 	touch_actions[b] = action
 	root.add_child(b)
@@ -155,7 +199,7 @@ func _stick_event(e):
 
 func _set_touch_stick(pos: Vector2):
 	var rect := joystick.get_global_rect()
-	game.stick = ((pos - rect.get_center()) / maxf(1.0, minf(rect.size.x, rect.size.y) * 0.46)).limit_length()
+	game.stick = ((pos - rect.get_center()) / maxf(1.0, minf(rect.size.x, rect.size.y) * 0.31)).limit_length()
 
 func _web_rect(control: Control) -> Array:
 	# Canvas stretch includes letterbox offsets on wide phones. Convert both
@@ -174,6 +218,9 @@ func _touch_start(index: int, pos: Vector2) -> bool:
 		var button := buttons[i]
 		if not button.is_visible_in_tree() or button.disabled or not button.get_global_rect().has_point(pos):
 			continue
+		if button.get_meta("round",false):
+			var rect := button.get_global_rect()
+			if ((pos-rect.get_center())/(rect.size*0.5)).length()>1.0: continue
 		captured_touches[index] = button
 		if button == joystick:
 			if joystick_finger == -1:
@@ -308,12 +355,13 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
+	joystick_knob.position=(joystick.size-joystick_knob.size)*0.5+game.stick*(joystick.size.x-joystick_knob.size.x)*0.5
 	if selected_page=="Character": refresh_character_details()
 	if meter_fills.size()==3:
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.13  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.14  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -333,7 +381,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.13","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.14","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
