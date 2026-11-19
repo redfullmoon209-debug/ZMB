@@ -47,6 +47,8 @@ var character_name := "Warrior"
 var player_visual: Node3D
 var attack_anim: Tween
 var attack_pose_count := 0
+var critical_chance := 0.10
+const CRITICAL_MULTIPLIER := 1.5
 var session_started_msec := -1
 var previous_play_seconds := 0
 var first_play_unix := 0
@@ -450,6 +452,33 @@ func play_attack_pose(skill: int):
 	attack_anim.tween_property(arm,"rotation",strike,0.14/gm_attack_multiplier)
 	attack_anim.tween_property(arm,"rotation",Vector3.ZERO,0.18/gm_attack_multiplier)
 
+func show_damage_number(pos: Vector3, amount: int, critical: bool):
+	var number := Label3D.new()
+	number.text=str(amount)
+	number.font=preload("res://assets/fonts/NotoSansThai-Regular.ttf")
+	number.font_size=76 if critical else 58
+	number.outline_size=12
+	number.outline_modulate=Color("111318")
+	number.modulate=Color("ff4149") if critical else Color.WHITE
+	number.pixel_size=0.008
+	number.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+	number.no_depth_test=true
+	number.set_meta("damage_number",true)
+	number.set_meta("critical",critical)
+	add_child(number)
+	number.position=pos
+	var animation := create_tween().set_parallel(true)
+	animation.tween_property(number,"position",pos+Vector3.UP*1.0,0.85).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	animation.tween_property(number,"modulate:a",0.0,0.35).set_delay(0.5)
+	animation.tween_property(number,"outline_modulate:a",0.0,0.35).set_delay(0.5)
+	animation.chain().tween_callback(number.queue_free)
+
+func deal_damage(victim: Node3D, skill: int):
+	var critical := randf()<critical_chance
+	var amount := maxi(0,roundi((gm_attack_power+skill*7)*(CRITICAL_MULTIPLIER if critical else 1.0)))
+	victim.set_meta("hp",maxf(0,float(victim.get_meta("hp"))-amount))
+	if amount>0: show_damage_number(victim.position+Vector3.UP*(2.35*victim.scale.y),amount,critical)
+
 func attack(skill: int):
 	if not started or hp<=0 or cooldown>0 or skill<0 or skill>3:
 		return
@@ -469,7 +498,7 @@ func attack(skill: int):
 	mp -= skill*5
 	if is_demo_target(target):
 		var dummy := target
-		dummy.set_meta("hp",maxf(0,float(dummy.get_meta("hp"))-gm_attack_power-skill*7))
+		deal_damage(dummy,skill)
 		if dummy.get_meta("hp")<=0:
 			target=null
 			dummy.hide()
@@ -483,7 +512,7 @@ func attack(skill: int):
 		for n in enemies:
 			if n!=target and not is_safe_position(n.position) and n.position.distance_to(target.position)<3: hits.append(n)
 	for n in hits:
-		n.set_meta("hp",float(n.get_meta("hp"))-gm_attack_power-skill*7)
+		deal_damage(n,skill)
 		if n.get_meta("hp")<=0:
 			monsters_defeated+=1
 			if int(n.get_meta("tier"))==2:
@@ -503,9 +532,9 @@ func attack(skill: int):
 			var spawn_tier: int=int(n.get_meta("tier"))
 			get_tree().create_timer(5).timeout.connect(func(): spawn_enemy(spawn_index,spawn_tier))
 
-func collect():
+func collect(radius: float=4.0):
 	for d in loot.duplicate():
-		if player.position.distance_to(d.position)<4 and items.size()<48:
+		if player.position.distance_to(d.position)<radius and items.size()<48:
 			items.append("Spirit shard")
 			shards_collected+=1
 			coins+=5
@@ -691,6 +720,8 @@ func _physics_process(delta: float):
 	player.move_and_slide()
 	player.position.x=clampf(player.position.x,-40,40)
 	player.position.z=clampf(player.position.z,-40,40)
+	# Walking across the drop collects it even when auto-hunt is disabled.
+	collect(0.85)
 	var safe := in_safe_zone()
 	if safe:
 		auto=false

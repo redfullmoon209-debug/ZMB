@@ -7,6 +7,7 @@ func run():
 	root.add_child(world)
 	await process_frame
 	world.begin(true)
+	world.critical_chance=0.0
 	world.ui.close_page()
 	var hud=world.ui
 	assert(world.demo_players.size()==2)
@@ -24,6 +25,7 @@ func run():
 	world.player.position=Vector3(1.8,0,-16)
 	world.choose_player_target()
 	assert(world.target==world.demo_players[1])
+	world.cooldown=0
 	world.attack(0)
 	hud.refresh_target_status(false)
 	assert(world.target.get_meta("hp")==85)
