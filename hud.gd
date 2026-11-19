@@ -3,6 +3,7 @@ var game: Node3D
 var root: Control
 var stats: Label
 var target_label: Label
+var zone_label: Label
 var panel: PanelContainer
 var body: VBoxContainer
 var chat: LineEdit
@@ -50,6 +51,9 @@ func _ready():
 	stats=label("",Vector2(22,18),Vector2(320,100))
 	target_label=label("",Vector2(460,18),Vector2(360,70))
 	target_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	zone_label=label("",Vector2(420,76),Vector2(440,34))
+	zone_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	zone_label.add_theme_font_size_override("font_size",21)
 	make_button("MENU",Vector2(1110,18),Vector2(145,52),func(): open_page("Menu"))
 	joystick=make_button("◉",Vector2(40,480),Vector2(150,150),func(): pass)
 	joystick.gui_input.connect(_stick_event)
@@ -60,7 +64,8 @@ func _ready():
 	make_button("DASH",Vector2(1190,325),Vector2(80,55),func():game.dash_time=0.18)
 	make_button("RUN",Vector2(220,550),Vector2(80,55),func():game.run_mode=not game.run_mode)
 	make_button("LOOT",Vector2(980,550),Vector2(90,55),func():game.collect())
-	make_button("AUTO",Vector2(880,550),Vector2(90,55),func():game.auto=not game.auto)
+	make_button("AUTO",Vector2(880,550),Vector2(90,55),func():
+		if not game.in_safe_zone(): game.auto=not game.auto)
 	make_button("MONSTER",Vector2(1000,250),Vector2(125,55),func():game.choose_target())
 	make_button("PLAYER",Vector2(1135,250),Vector2(120,55),func(): target_label.text="No online players (demo)")
 	make_button("HP",Vector2(480,565),Vector2(80,55),func():game.hp=minf(100,game.hp+35))
@@ -141,7 +146,7 @@ func _touch_start(index: int, pos: Vector2) -> bool:
 			var action: Callable = touch_actions[button]
 			action.call()
 		return true
-	if not chat.get_global_rect().has_point(pos):
+	if not game.in_safe_zone() and not chat.get_global_rect().has_point(pos):
 		var nearest := 65.0
 		for enemy in game.enemies:
 			if game.camera.is_position_behind(enemy.position): continue
@@ -194,8 +199,12 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
-	stats.text="ZMB v0.1.3  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
-	if is_instance_valid(game.target): target_label.text="%s • HP %d"%[["Normal","Elite","Boss"][game.target.get_meta("tier")],game.target.get_meta("hp")]
+	stats.text="ZMB v0.1.4  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	var safe: bool = game.in_safe_zone()
+	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
+	zone_label.modulate=Color("a7f2bd") if safe else Color("ffaf83")
+	if safe: target_label.text=["หมู่บ้านวิญญาณ — ออกประตูเพื่อเก็บเลเวล","Spirit Village — Exit a gate to hunt","灵魂村 — 出城狩猎"][lang]
+	elif is_instance_valid(game.target): target_label.text="%s • HP %d"%[["Normal","Elite","Boss"][game.target.get_meta("tier")],game.target.get_meta("hp")]
 	elif game.auto: target_label.text="AUTO HUNT"
 	else: target_label.text="ZMB  •  OFFLINE DEMO"
 	if game.hp<=0 and game.started and not is_instance_valid(panel): open_page("Revive")
@@ -206,7 +215,7 @@ func _process(delta):
 		var controls := {}
 		for b in buttons: controls[b.text] = _web_rect(b)
 		if is_instance_valid(start_button): controls["START"] = _web_rect(start_button)
-		var d := {"version":"0.1.3","ready":true,"started":game.started,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.4","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -347,4 +356,4 @@ func open_page(page:String):
 		"Social": add_text(content,"Friends / Party / Guild\nOnline backend not connected.")
 		"Ranking": add_text(content,"Level / Power / PvP / Combat range / Weapon / Guild\nOffline preview")
 		"News": add_text(content,"News / Events / Updates\nv0.1: Offline village prototype")
-		"Map": add_text(content,"Village of the Spirit Plague\nPosition: %s"%str(game.player.position))
+		"Map": add_text(content,"Spirit Village • Safe Zone (26 × 26 m)\nFour gates lead to the hunting grounds.\nNormal → outer Elite → Boss\nPosition: %s"%str(game.player.position))

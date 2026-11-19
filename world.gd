@@ -1,6 +1,9 @@
 extends Node3D
 
 const HUD = preload("res://hud.gd")
+const SAFE_HALF := 13.0
+const GATE_HALF := 3.0
+const RESPAWN_POINT := Vector3.ZERO
 var player: CharacterBody3D
 var camera: Camera3D
 var ui: CanvasLayer
@@ -50,16 +53,15 @@ func _ready():
 	floor_body.position.y = -0.5
 	floor_body.add_child(shape)
 	add_child(floor_body)
-	for i in range(7):
-		var x := float(i - 3)*8.0
-		building(Vector3(x,0,-17))
-		box(Vector3(x,0.1,0),Vector3(7.8,0.2,4),Color("77756b"),self)
+	build_safe_village()
 	for i in range(20):
-		var p := Vector3(randf_range(-38,38),0,randf_range(8,38))
+		var p := Vector3(randf_range(-38,38),0,randf_range(-38,38))
+		if is_safe_position(p, 5.0): continue
 		box(p+Vector3.UP*1.5,Vector3(0.5,3,0.5),Color("46382a"),self)
 		box(p+Vector3.UP*3,Vector3(2.5,2.2,2.5),Color("243f32"),self)
 	player = CharacterBody3D.new()
 	add_child(player)
+	player.position = RESPAWN_POINT
 	var c := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	capsule.height = 1.8
@@ -76,6 +78,65 @@ func _ready():
 	ui = HUD.new()
 	ui.game = self
 	add_child(ui)
+
+func is_safe_position(p: Vector3, margin: float = 0.0) -> bool:
+	return absf(p.x) < SAFE_HALF + margin and absf(p.z) < SAFE_HALF + margin
+
+func in_safe_zone() -> bool:
+	return is_instance_valid(player) and is_safe_position(player.position)
+
+func solid_box(p: Vector3, s: Vector3, color: Color):
+	var body := StaticBody3D.new()
+	add_child(body)
+	body.position = p
+	var collider := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = s
+	collider.shape = shape
+	body.add_child(collider)
+	box(Vector3.ZERO, s, color, body)
+
+func sign_at(p: Vector3, words: String, color: Color):
+	var sign := Label3D.new()
+	sign.text = words
+	sign.font_size = 44
+	sign.pixel_size = 0.014
+	sign.modulate = color
+	sign.outline_size = 8
+	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	add_child(sign)
+	sign.position = p
+
+func build_safe_village():
+	# Stone courtyard and four guarded exits. Walls are physical, with wide
+	# openings aligned to the roads so players choose when to leave town.
+	box(Vector3(0,0.015,0),Vector3(26,0.03,26),Color("72736a"),self)
+	box(Vector3(0,0.04,0),Vector3(4.5,0.04,38),Color("aca28a"),self)
+	box(Vector3(0,0.04,0),Vector3(38,0.04,4.5),Color("aca28a"),self)
+	for x in [-8.0,8.0]:
+		for z in [-7.0,7.0]: building(Vector3(x,0,z))
+	var wall_length := SAFE_HALF-GATE_HALF
+	var wall_center := (SAFE_HALF+GATE_HALF)/2.0
+	for side in [-1,1]:
+		var edge := float(side)*SAFE_HALF
+		for wing in [-1,1]:
+			var along := float(wing)*wall_center
+			solid_box(Vector3(along,1.35,edge),Vector3(wall_length,2.7,0.7),Color("514b42"))
+			solid_box(Vector3(edge,1.35,along),Vector3(0.7,2.7,wall_length),Color("514b42"))
+			box(Vector3(along,2.83,edge),Vector3(wall_length,0.28,1),Color("282b2c"),self)
+			box(Vector3(edge,2.83,along),Vector3(1,0.28,wall_length),Color("282b2c"),self)
+			var post := float(wing)*(GATE_HALF+0.45)
+			solid_box(Vector3(post,1.8,edge),Vector3(0.65,3.6,0.65),Color("692e2d"))
+			solid_box(Vector3(edge,1.8,post),Vector3(0.65,3.6,0.65),Color("692e2d"))
+			box(Vector3(post,3.75,edge),Vector3(0.8,0.55,0.8),Color("dfad59"),self)
+			box(Vector3(edge,3.75,post),Vector3(0.8,0.55,0.8),Color("dfad59"),self)
+		box(Vector3(0,3.9,edge),Vector3(7.8,0.3,1.2),Color("333436"),self)
+		box(Vector3(edge,3.9,0),Vector3(1.2,0.3,7.8),Color("333436"),self)
+		box(Vector3(0,0.07,edge),Vector3(6,0.08,0.45),Color("65d2a1"),self)
+		box(Vector3(edge,0.07,0),Vector3(0.45,0.08,6),Color("65d2a1"),self)
+		sign_at(Vector3(0,4.6,edge),"HUNTING GROUNDS • LV 1+",Color("f6c883"))
+		sign_at(Vector3(edge,4.6,0),"HUNTING GROUNDS • LV 1+",Color("f6c883"))
+	sign_at(Vector3(0,3.3,0),"SPIRIT VILLAGE  /  SAFE ZONE",Color("a7f2bd"))
 
 func box(p: Vector3,s: Vector3,color: Color,parent: Node) -> MeshInstance3D:
 	var m := MeshInstance3D.new()
@@ -115,8 +176,15 @@ func figure(parent: Node3D,color: Color) -> Node3D:
 func spawn_enemy(i: int):
 	var n := Node3D.new()
 	add_child(n)
-	n.position = Vector3(sin(i*2.4)*float(7+i),0,cos(i*2.4)*float(7+i))
 	var tier := 2 if i==11 else (1 if i%4==0 else 0)
+	var angle := float(i)*2.39996
+	var distance := 24.0 if tier==0 else (32.0 if tier==1 else 39.0)
+	n.position = Vector3(sin(angle)*distance,0,cos(angle)*distance)
+	# Ring placement can land near a square's corner; force every spawn
+	# outside the protected boundary, even after a respawn.
+	if is_safe_position(n.position, 2): n.position = n.position.normalized()*28.0
+	n.set_meta("home",n.position)
+	n.set_meta("spawn_index",i)
 	n.set_meta("tier",tier)
 	n.set_meta("hp",float(40+80*tier))
 	figure(n,[Color("70886b"),Color("b89a51"),Color("7b49a5")][tier])
@@ -129,6 +197,9 @@ func begin(is_male: bool):
 	started = true
 
 func choose_target():
+	if in_safe_zone():
+		target=null
+		return
 	var sorted := enemies.filter(func(n): return is_instance_valid(n))
 	sorted.sort_custom(func(a,b): return a.position.distance_squared_to(player.position)<b.position.distance_squared_to(player.position))
 	if sorted.is_empty():
@@ -136,7 +207,7 @@ func choose_target():
 	target = sorted[(sorted.find(target)+1)%sorted.size()]
 
 func attack(skill: int):
-	if not started or hp<=0 or cooldown>0:
+	if not started or hp<=0 or cooldown>0 or in_safe_zone():
 		return
 	if not is_instance_valid(target): choose_target()
 	if not is_instance_valid(target): return
@@ -161,7 +232,8 @@ func attack(skill: int):
 			enemies.erase(n)
 			n.queue_free()
 			if n==target: target=null
-			get_tree().create_timer(5).timeout.connect(func(): spawn_enemy(randi_range(0,11)))
+			var spawn_index: int = n.get_meta("spawn_index")
+			get_tree().create_timer(5).timeout.connect(func(): spawn_enemy(spawn_index))
 
 func collect():
 	for d in loot.duplicate():
@@ -174,7 +246,10 @@ func collect():
 func revive():
 	hp=100
 	mp=100
-	player.position=Vector3.ZERO
+	player.position=RESPAWN_POINT
+	player.velocity=Vector3.ZERO
+	target=null
+	auto=false
 
 func _unhandled_input(event):
 	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT): yaw-=event.relative.x*0.007
@@ -182,7 +257,7 @@ func _unhandled_input(event):
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index==MOUSE_BUTTON_WHEEL_UP: zoom=maxf(4,zoom-1)
 		if event.button_index==MOUSE_BUTTON_WHEEL_DOWN: zoom=minf(16,zoom+1)
-		if event.button_index==MOUSE_BUTTON_LEFT:
+		if event.button_index==MOUSE_BUTTON_LEFT and not in_safe_zone():
 			var nearest := 65.0
 			for n in enemies:
 				if camera.is_position_behind(n.position): continue
@@ -214,6 +289,11 @@ func _physics_process(delta: float):
 	input.x += float(Input.is_physical_key_pressed(KEY_D))-float(Input.is_physical_key_pressed(KEY_A))
 	input.y += float(Input.is_physical_key_pressed(KEY_S))-float(Input.is_physical_key_pressed(KEY_W))
 	var move := Vector3(input.x,0,input.y).rotated(Vector3.UP,yaw).limit_length()
+	if in_safe_zone():
+		auto=false
+		target=null
+		hp=minf(100.0,hp+delta*6.0)
+		mp=minf(100.0,mp+delta*4.0)
 	if auto:
 		if not is_instance_valid(target): choose_target()
 		if is_instance_valid(target):
@@ -232,8 +312,21 @@ func _physics_process(delta: float):
 	player.move_and_slide()
 	player.position.x=clampf(player.position.x,-40,40)
 	player.position.z=clampf(player.position.z,-40,40)
+	var safe := in_safe_zone()
+	if safe:
+		auto=false
+		target=null
 	for n in enemies:
+		var home: Vector3 = n.get_meta("home")
+		if is_safe_position(n.position, 0.6):
+			n.position=home
+			continue
+		if safe:
+			var returning := n.position.move_toward(home,delta*2.5)
+			if not is_safe_position(returning,0.6): n.position=returning
+			continue
 		var diff := player.position-n.position
 		if diff.length()<10 and diff.length()>1.6:
-			n.position+=Vector3(diff.x,0,diff.z).normalized()*delta*1.5
+			var next := n.position+Vector3(diff.x,0,diff.z).normalized()*delta*1.5
+			if not is_safe_position(next,0.6): n.position=next
 		elif diff.length()<=1.6: hp=maxf(0,hp-delta*4)

@@ -38,6 +38,7 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => JSON.parse(window.zmbDiagnosticsJSON).started);
     await page.waitForTimeout(350);
     const d = await diag();
+    assert.equal(d.safe,true,'Player should start in Safe Zone');
     const joy = point(d.controls['◉'],0.5,0.15,1);
     const jump = point(d.controls.JUMP,0.5,0.5,2);
     const cdp = await page.context().newCDPSession(page);
@@ -49,6 +50,11 @@ const server = http.createServer((req, res) => {
     console.log('PASS: actual Godot Web build moves and jumps with two simultaneous browser touches');
     await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     await page.waitForFunction(() => JSON.parse(window.zmbDiagnosticsJSON).stick.every(n=>n===0));
+    await page.waitForFunction(() => JSON.parse(window.zmbDiagnosticsJSON).position[1]<0.05);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[joy]});
+    await page.waitForFunction(() => {const d=JSON.parse(window.zmbDiagnosticsJSON);return !d.safe&&d.position[2]<-13;},null,{timeout:20000});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    console.log('PASS: player spawns inside safe village and can walk freely through north gate to hunting grounds');
   } catch (error) {
     console.log('Failure state:',await page.evaluate(()=>({body:document.body.innerText,diagnostics:window.zmbDiagnosticsJSON,bridge:typeof window.zmbTouchDrain,ready:window.zmbTouchReady,gameplay:window.zmbGameplay,webgl2:!!document.createElement('canvas').getContext('webgl2'),canvas:document.querySelector('canvas')?.getBoundingClientRect().toJSON()})));
     throw error;
