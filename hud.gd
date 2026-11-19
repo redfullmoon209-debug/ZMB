@@ -10,6 +10,9 @@ var joystick: Button
 var lang := 1
 var selected_page := ""
 var buttons: Array[Button] = []
+var touch_actions: Dictionary = {}
+var captured_touches: Dictionary = {}
+var joystick_finger := -1
 var config := ConfigFile.new()
 var names := {"Bag":["กระเป๋า","Bag","背包"],"Storage":["คลัง","Storage","仓库"],"Character":["ตัวละคร","Character","角色"],"Skills":["สกิล","Skills","技能"],"Market":["ตลาดโลก","Market","市场"],"Shop":["ร้านค้า","Shop","商店"],"Quest":["เควส","Quest","任务"],"Social":["สังคม","Social","社交"],"Ranking":["อันดับ","Ranking","排行"],"News":["ประกาศ","News","公告"],"Settings":["ตั้งค่า","Settings","设置"],"Trade":["แลกเปลี่ยน","Trade","交易"],"Map":["แผนที่","Map","地图"]}
 
@@ -87,15 +90,76 @@ func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	b.scale=config.get_value("scale",t,Vector2.ONE)
 	b.modulate.a=config.get_value("opacity",t,0.82)
 	b.pressed.connect(action)
+	touch_actions[b] = action
 	root.add_child(b)
 	buttons.append(b)
 	return b
 
 func _stick_event(e):
+	if joystick_finger >= 0 or e.device == InputEvent.DEVICE_ID_EMULATION:
+		return
 	if e is InputEventMouseButton:
 		game.stick=Vector2.ZERO if not e.pressed else ((e.position-joystick.size/2)/70.0).limit_length()
 	elif e is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		game.stick=((e.position-joystick.size/2)/70.0).limit_length()
+
+func _set_touch_stick(pos: Vector2):
+	var rect := joystick.get_global_rect()
+	game.stick = ((pos - rect.get_center()) / maxf(1.0, minf(rect.size.x, rect.size.y) * 0.46)).limit_length()
+
+func _input(event: InputEvent):
+	if not is_instance_valid(joystick):
+		return
+	# Godot's mouse emulation represents only one finger. HUD controls use
+	# actual touch indices instead, while popup menus still use mouse emulation.
+	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+		if not captured_touches.is_empty() or (not is_instance_valid(panel) and not chat.get_global_rect().has_point(event.position)):
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventScreenTouch:
+		if not event.pressed or event.canceled:
+			if captured_touches.has(event.index):
+				captured_touches.erase(event.index)
+				if event.index == joystick_finger:
+					joystick_finger = -1
+					game.stick = Vector2.ZERO
+				get_viewport().set_input_as_handled()
+			return
+		if is_instance_valid(panel) or not game.started:
+			return
+		# Reverse order matches the HUD's drawing order if controls overlap.
+		for i in range(buttons.size()-1, -1, -1):
+			var button := buttons[i]
+			if not button.is_visible_in_tree() or button.disabled or not button.get_global_rect().has_point(event.position):
+				continue
+			captured_touches[event.index] = button
+			get_viewport().set_input_as_handled()
+			if button == joystick:
+				if joystick_finger == -1:
+					joystick_finger = event.index
+					_set_touch_stick(event.position)
+			else:
+				var action: Callable = touch_actions[button]
+				action.call()
+			return
+		if not chat.get_global_rect().has_point(event.position):
+			var nearest := 65.0
+			for enemy in game.enemies:
+				if game.camera.is_position_behind(enemy.position): continue
+				var distance: float = game.camera.unproject_position(enemy.position + Vector3.UP).distance_to(event.position)
+				if distance < nearest:
+					nearest = distance
+					game.target = enemy
+	elif event is InputEventScreenDrag and captured_touches.has(event.index):
+		if event.index == joystick_finger:
+			_set_touch_stick(event.position)
+		get_viewport().set_input_as_handled()
+
+func _notification(what: int):
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and is_instance_valid(game):
+		captured_touches.clear()
+		joystick_finger = -1
+		game.stick = Vector2.ZERO
 
 func _process(_delta):
 	if not is_instance_valid(stats): return
@@ -136,6 +200,8 @@ func grid(parent:Node,count:int,columns:int,contents:Array=[]):
 	return g
 
 func open_page(page:String):
+	joystick_finger = -1
+	game.stick = Vector2.ZERO
 	close_page()
 	selected_page=page
 	panel=PanelContainer.new()
