@@ -26,7 +26,12 @@ func run():
 			for other in circular:
 				assert(not b.get_global_rect().intersects(other.get_global_rect()),"Default buttons overlap")
 			circular.append(b)
-	assert(circular.size()==16 and is_instance_valid(hud.joystick_knob.texture))
+	# Minimap +/- retain their touch targets but no longer have circular frames.
+	assert(circular.size()==14 and is_instance_valid(hud.joystick_knob.texture))
+	for b in hud.buttons:
+		if b.text in ["+","−"]:
+			assert(not b.get_meta("round",false))
+			assert(b.get_theme_stylebox("normal") is StyleBoxEmpty)
 	var jump_button: Button
 	var run_button: Button
 	var dash_button: Button

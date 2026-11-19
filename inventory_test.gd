@@ -28,6 +28,10 @@ func run():
 			assert(interior.encloses(hud.modal_scroll.get_global_rect()))
 			for control in header.get_children():
 				assert(interior.encloses(control.get_global_rect()))
+				if control is Button and control.has_meta("inventory_tab"):
+					assert(control.icon==null)
+					if control.get_meta("inventory_tab")==page:
+						assert(control.get_theme_stylebox("normal").bg_color==Color("75232c"))
 			var lang_button: MenuButton=header.get_child(5)
 			assert(lang_button.get_popup().item_count==3)
 			var row: HBoxContainer=hud.modal_scroll.get_child(0).get_child(0)
