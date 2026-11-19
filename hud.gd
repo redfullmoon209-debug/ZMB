@@ -439,7 +439,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.40"%game.coins
+	stats.text="Gold %d   v0.1.41"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -598,6 +598,20 @@ func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	b.size=config.get_value("size",t,s)
 	b.scale=config.get_value("scale",t,Vector2.ONE)
 	b.modulate.a=config.get_value("opacity",t,0.82)
+	if t in ["MENU","GM"]:
+		var silver := StyleBoxTexture.new()
+		silver.texture=preload("res://assets/menu_icons/menu_button_silver.png")
+		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
+			silver.set_texture_margin(side,5)
+			silver.set_content_margin(side,5)
+		var hover := silver.duplicate() as StyleBoxTexture
+		hover.modulate_color=Color(1.25,1.25,1.25)
+		var pressed := silver.duplicate() as StyleBoxTexture
+		pressed.modulate_color=Color(0.75,0.75,0.75)
+		b.add_theme_stylebox_override("normal",silver)
+		b.add_theme_stylebox_override("hover",hover)
+		b.add_theme_stylebox_override("pressed",pressed)
+		b.add_theme_stylebox_override("focus",StyleBoxEmpty.new())
 	if t not in ["MENU","CAMERA","GM"]:
 		b.set_meta("round",true)
 		var round_style := StyleBoxFlat.new()
@@ -854,7 +868,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.40","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.41","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -1183,7 +1197,7 @@ func build_quick_menu():
 	panel.size=Vector2(1040,112)
 	panel.z_index=20
 	var frame := StyleBoxTexture.new()
-	frame.texture=preload("res://assets/menu_icons/quick_menu_frame.svg")
+	frame.texture=preload("res://assets/menu_icons/quick_menu_silver.png")
 	for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
 		frame.set_texture_margin(side,12)
 		frame.set_content_margin(side,0)
@@ -1201,7 +1215,7 @@ func build_quick_menu():
 	menu_font.variation_embolden=0.45
 	var idle := StyleBoxEmpty.new()
 	var highlight := StyleBoxFlat.new()
-	highlight.bg_color=Color("7d293340")
+	highlight.bg_color=Color("a7adb122")
 	highlight.set_corner_radius_all(6)
 	for key in MENU_PAGES:
 		var b := Button.new()
