@@ -17,6 +17,15 @@ func run():
 		if b.get_meta("hud_key")=="MENU":
 			assert(b.get_global_rect().end.x<mini_rect.position.x)
 	assert(hud.minimap.map_point(Vector3(10,0,0)).x>hud.minimap.map_point(Vector3.ZERO).x)
+	assert(is_equal_approx(mini_rect.size.x,mini_rect.size.y))
+	var camera_zoom: float=world.zoom
+	var original_map_zoom: float=hud.minimap.map_zoom
+	for b in hud.buttons:
+		if b.text=="+": b.pressed.emit()
+	assert(hud.minimap.map_zoom>original_map_zoom and world.zoom==camera_zoom)
+	for b in hud.buttons:
+		if b.text=="−": b.pressed.emit()
+	assert(hud.minimap.map_zoom==original_map_zoom)
 	hud.open_page("Menu")
 	await process_frame
 	await process_frame

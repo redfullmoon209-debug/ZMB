@@ -237,8 +237,12 @@ func _ready():
 	minimap=preload("res://minimap.gd").new()
 	minimap.game=game
 	minimap.position=Vector2(1105,12)
-	minimap.size=Vector2(155,145)
+	minimap.size=Vector2(155,155)
 	root.add_child(minimap)
+	var zoom_in := make_button("+",Vector2(1105,173),Vector2(32,32),func():minimap.change_zoom(0.5))
+	var zoom_out := make_button("−",Vector2(1228,173),Vector2(32,32),func():minimap.change_zoom(-0.5))
+	zoom_in.tooltip_text="Minimap zoom in"
+	zoom_out.tooltip_text="Minimap zoom out"
 	joystick=make_button("◉",Vector2(78,474),Vector2(220,220),func(): pass)
 	joystick.add_theme_color_override("font_color",Color.TRANSPARENT)
 	joystick.add_theme_color_override("font_hover_color",Color.TRANSPARENT)
@@ -268,14 +272,14 @@ func _ready():
 	make_button("DASH",Vector2(1002,425),Vector2(72,72),func():game.request_dash())
 	make_button("RUN",Vector2(940,535),Vector2(64,64),func():game.toggle_run())
 	make_button("LOOT",Vector2(1014,80),Vector2(70,70),func():game.collect())
-	make_button("AUTO",Vector2(1204,289),Vector2(70,70),func():
+	make_button("AUTO",Vector2(1204,318),Vector2(70,70),func():
 		if not game.in_safe_zone(): game.auto=not game.auto)
-	make_button("MONSTER",Vector2(1100,208),Vector2(70,70),func():game.choose_target())
-	make_button("PLAYER",Vector2(1181,210),Vector2(70,70),func():game.choose_player_target())
+	make_button("MONSTER",Vector2(1120,254),Vector2(54,54),func():game.choose_target())
+	make_button("PLAYER",Vector2(1200,254),Vector2(54,54),func():game.choose_player_target())
 	make_button("HP",Vector2(888,634),Vector2(64,64),func():game.hp=minf(game.max_hp(),game.hp+35))
 	make_button("MP",Vector2(815,640),Vector2(64,64),func():game.mp=minf(game.max_mp(),game.mp+35))
 	game.set_camera_follow(bool(config.get_value("camera","follow",false)))
-	camera_mode_button=make_button("CAMERA",Vector2(1105,164),Vector2(155,40),func():
+	camera_mode_button=make_button("CAMERA",Vector2(1118,213),Vector2(130,32),func():
 		game.set_camera_follow(not game.camera_follow)
 		config.set_value("camera","follow",game.camera_follow)
 		config.save("user://zmb.cfg"))
@@ -414,7 +418,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.34"%game.coins
+	stats.text="Gold %d   v0.1.35"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -813,7 +817,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.34","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.35","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload

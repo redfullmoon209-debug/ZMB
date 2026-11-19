@@ -26,7 +26,7 @@ func run():
 			for other in circular:
 				assert(not b.get_global_rect().intersects(other.get_global_rect()),"Default buttons overlap")
 			circular.append(b)
-	assert(circular.size()==14 and is_instance_valid(hud.joystick_knob.texture))
+	assert(circular.size()==16 and is_instance_valid(hud.joystick_knob.texture))
 	var jump_button: Button
 	var run_button: Button
 	var dash_button: Button
