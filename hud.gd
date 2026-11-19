@@ -239,7 +239,7 @@ func _ready():
 	minimap.position=Vector2(1105,12)
 	minimap.size=Vector2(155,145)
 	root.add_child(minimap)
-	joystick=make_button("◉",Vector2(65,410),Vector2(226,226),func(): pass)
+	joystick=make_button("◉",Vector2(78,474),Vector2(220,220),func(): pass)
 	joystick.add_theme_color_override("font_color",Color.TRANSPARENT)
 	joystick.add_theme_color_override("font_hover_color",Color.TRANSPARENT)
 	joystick.add_theme_color_override("font_pressed_color",Color.TRANSPARENT)
@@ -260,20 +260,20 @@ func _ready():
 	joystick_knob.size=Vector2(76,76)
 	joystick.add_child(joystick_knob)
 	joystick.gui_input.connect(_stick_event)
-	make_button("ATTACK",Vector2(1100,505),Vector2(124,124),func(): game.attack(0))
-	var skills := [Vector2(975,545),Vector2(984,430),Vector2(1104,397)]
+	make_button("ATTACK",Vector2(1124,580),Vector2(124,124),func(): game.attack(0))
+	var skills := [Vector2(970,614),Vector2(1036,512),Vector2(1140,468)]
 	for i in range(3):
 		make_button("SKILL %d"%(i+1),skills[i],Vector2(88,88),func():game.attack(i+1))
-	make_button("JUMP",Vector2(977,323),Vector2(72,72),func():game.jump_requested=true)
-	make_button("DASH",Vector2(1109,287),Vector2(72,72),func():game.request_dash())
-	make_button("RUN",Vector2(607,577),Vector2(64,64),func():game.toggle_run())
-	make_button("LOOT",Vector2(923,211),Vector2(70,70),func():game.collect())
-	make_button("AUTO",Vector2(1003,211),Vector2(70,70),func():
+	make_button("JUMP",Vector2(1094,368),Vector2(72,72),func():game.jump_requested=true)
+	make_button("DASH",Vector2(1002,425),Vector2(72,72),func():game.request_dash())
+	make_button("RUN",Vector2(940,535),Vector2(64,64),func():game.toggle_run())
+	make_button("LOOT",Vector2(1014,80),Vector2(70,70),func():game.collect())
+	make_button("AUTO",Vector2(1204,289),Vector2(70,70),func():
 		if not game.in_safe_zone(): game.auto=not game.auto)
-	make_button("MONSTER",Vector2(1083,211),Vector2(70,70),func():game.choose_target())
-	make_button("PLAYER",Vector2(1163,211),Vector2(70,70),func():game.choose_player_target())
-	make_button("HP",Vector2(529,577),Vector2(64,64),func():game.hp=minf(game.max_hp(),game.hp+35))
-	make_button("MP",Vector2(685,577),Vector2(64,64),func():game.mp=minf(game.max_mp(),game.mp+35))
+	make_button("MONSTER",Vector2(1100,208),Vector2(70,70),func():game.choose_target())
+	make_button("PLAYER",Vector2(1181,210),Vector2(70,70),func():game.choose_player_target())
+	make_button("HP",Vector2(888,634),Vector2(64,64),func():game.hp=minf(game.max_hp(),game.hp+35))
+	make_button("MP",Vector2(815,640),Vector2(64,64),func():game.mp=minf(game.max_mp(),game.mp+35))
 	game.set_camera_follow(bool(config.get_value("camera","follow",false)))
 	camera_mode_button=make_button("CAMERA",Vector2(1105,164),Vector2(155,40),func():
 		game.set_camera_follow(not game.camera_follow)
@@ -282,7 +282,7 @@ func _ready():
 	camera_mode_button.add_theme_font_size_override("font_size",13)
 	chat=LineEdit.new()
 	chat.placeholder_text="Chat • local demo"
-	chat.position=Vector2(430,665)
+	chat.position=Vector2(350,648)
 	chat.size=Vector2(420,40)
 	chat.modulate.a=0.35
 	chat.focus_entered.connect(func(): chat.modulate.a=1)
@@ -414,7 +414,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.33"%game.coins
+	stats.text="Gold %d   v0.1.34"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -813,7 +813,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.33","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.34","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
