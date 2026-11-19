@@ -5,6 +5,7 @@ var stats: Label
 var target_label: Label
 var zone_label: Label
 var camera_mode_button: Button
+var minimap: Control
 var panel: PanelContainer
 var body: VBoxContainer
 var chat: LineEdit
@@ -64,6 +65,12 @@ func _ready():
 			if config.has_section(section): config.erase_section(section)
 		config.set_value("ui","hud_layout",2)
 		config.save("user://zmb.cfg")
+	if int(config.get_value("ui","hud_layout",0))<3:
+		for key in ["MENU","CAMERA"]:
+			for section in ["position","size","scale"]:
+				if config.has_section_key(section,key): config.erase_section_key(section,key)
+		config.set_value("ui","hud_layout",3)
+		config.save("user://zmb.cfg")
 	lang=int(config.get_value("ui","lang",1))
 	root=Control.new()
 	add_child(root)
@@ -107,7 +114,12 @@ func _ready():
 	zone_label=label("",Vector2(420,76),Vector2(440,34))
 	zone_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	zone_label.add_theme_font_size_override("font_size",21)
-	make_button("MENU",Vector2(1110,18),Vector2(145,52),func(): open_page("Menu"))
+	make_button("MENU",Vector2(970,18),Vector2(120,48),func(): open_page("Menu"))
+	minimap=preload("res://minimap.gd").new()
+	minimap.game=game
+	minimap.position=Vector2(1105,12)
+	minimap.size=Vector2(155,145)
+	root.add_child(minimap)
 	joystick=make_button("◉",Vector2(65,410),Vector2(226,226),func(): pass)
 	joystick.add_theme_color_override("font_color",Color.TRANSPARENT)
 	joystick.add_theme_color_override("font_hover_color",Color.TRANSPARENT)
@@ -144,10 +156,11 @@ func _ready():
 	make_button("HP",Vector2(529,577),Vector2(64,64),func():game.hp=minf(100,game.hp+35))
 	make_button("MP",Vector2(685,577),Vector2(64,64),func():game.mp=minf(100,game.mp+35))
 	game.set_camera_follow(bool(config.get_value("camera","follow",false)))
-	camera_mode_button=make_button("CAMERA",Vector2(1040,105),Vector2(215,56),func():
+	camera_mode_button=make_button("CAMERA",Vector2(1105,164),Vector2(155,40),func():
 		game.set_camera_follow(not game.camera_follow)
 		config.set_value("camera","follow",game.camera_follow)
 		config.save("user://zmb.cfg"))
+	camera_mode_button.add_theme_font_size_override("font_size",13)
 	chat=LineEdit.new()
 	chat.placeholder_text="Chat • local demo"
 	chat.position=Vector2(430,665)
@@ -390,7 +403,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.16  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.17  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -410,7 +423,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.16","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.17","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -675,7 +688,7 @@ func grid(parent:Node,count:int,columns:int,contents:Array=[]):
 func build_quick_menu():
 	# A single horizontal strip, with the first category anchored on the
 	# right next to MENU. All categories fit within the landscape viewport.
-	panel.position=Vector2(215,82)
+	panel.position=Vector2(55,82)
 	panel.size=Vector2(1040,112)
 	panel.z_index=20
 	var margin := MarginContainer.new()
