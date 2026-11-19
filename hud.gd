@@ -444,7 +444,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.42"%game.coins
+	stats.text="Gold %d   v0.1.43"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -873,7 +873,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.42","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.43","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -1615,11 +1615,19 @@ func open_page(page:String):
 	if page in INVENTORY_PAGES:
 		for key in INVENTORY_PAGES:
 			var tab: Button=add_button(header,trn(key),func():open_page(key))
-			if key!="Character":
-				tab.icon=load("res://assets/menu_icons/"+key.to_lower()+".png")
-				tab.add_theme_constant_override("icon_max_width",26)
 			tab.custom_minimum_size=Vector2(110,44)
-			if key==page: tab.add_theme_color_override("font_color",Color("ff9c8e"))
+			tab.set_meta("inventory_tab",key)
+			if key==page:
+				var selected := StyleBoxFlat.new()
+				selected.bg_color=Color("75232c")
+				selected.border_color=Color("ca5962")
+				selected.set_border_width_all(1)
+				selected.set_corner_radius_all(8)
+				for state in ["normal","hover","pressed","focus"]:
+					tab.add_theme_stylebox_override(state,selected)
+				tab.add_theme_color_override("font_color",Color.WHITE)
+				tab.add_theme_color_override("font_hover_color",Color.WHITE)
+				tab.add_theme_color_override("font_pressed_color",Color.WHITE)
 	language_menu(header,page)
 	if page not in ["Start","Revive"]:
 		close_button=add_button(header,"×",close_page)
