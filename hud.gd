@@ -2,6 +2,16 @@ extends CanvasLayer
 var game: Node3D
 var root: Control
 var stats: Label
+var player_status: Control
+var status_name: Label
+var status_level: Label
+var status_hp: Label
+var status_mp: Label
+var status_fill_clips: Array[Control] = []
+var status_portrait: Node3D
+var status_portrait_view: SubViewport
+var status_portrait_male := true
+const PLAYER_HUD = "res://assets/player_hud/"
 var target_label: Label
 var zone_label: Label
 var camera_mode_button: Button
@@ -119,6 +129,12 @@ func _ready():
 				if config.has_section_key(section,key): config.erase_section_key(section,key)
 		config.set_value("ui","hud_layout",3)
 		config.save("user://zmb.cfg")
+	if int(config.get_value("ui","hud_layout",0))<4:
+		for key in ["STATUS","METER 0","METER 1"]:
+			for section in ["position","size","scale","opacity"]:
+				if config.has_section_key(section,key): config.erase_section_key(section,key)
+		config.set_value("ui","hud_layout",4)
+		config.save("user://zmb.cfg")
 	lang=int(config.get_value("ui","lang",1))
 	root=Control.new()
 	add_child(root)
@@ -144,9 +160,9 @@ func _ready():
 	ui_font.fallbacks = [preload("res://assets/fonts/ZMB-Chinese.otf"),ThemeDB.fallback_font]
 	theme.default_font=ui_font
 	root.theme=theme
-	stats=label("",Vector2(22,18),Vector2(320,100))
+	build_player_status()
 	# Decorative meters do not participate in touch routing.
-	for i in range(3):
+	for i in [2]:
 		var meter := TextureProgressBar.new()
 		meter.mouse_filter=Control.MOUSE_FILTER_IGNORE
 		meter.position=Vector2(22,110+i*17)
@@ -229,7 +245,7 @@ func _ready():
 	chat.text_submitted.connect(func(_s): chat.clear(); chat.release_focus())
 	root.add_child(chat)
 	for b in buttons: editable_hud[b.get_meta("hud_key")]=b
-	editable_hud["STATUS"]=stats
+	editable_hud["STATUS"]=player_status
 	editable_hud["TARGET"]=target_label
 	editable_hud["ZONE"]=zone_label
 	editable_hud["CHAT"]=chat
@@ -238,7 +254,7 @@ func _ready():
 	quest_tracker.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	quest_tracker.add_theme_font_size_override("font_size",16)
 	editable_hud["QUEST TRACKER"]=quest_tracker
-	for i in range(meter_fills.size()): editable_hud["METER %d"%i]=meter_fills[i]
+	editable_hud["METER 2"]=meter_fills[0]
 	for key in editable_hud:
 		var c: Control=editable_hud[key]
 		if not hud_defaults.has(key):
@@ -261,6 +277,98 @@ func label(t: String,p:Vector2,s:Vector2) -> Label:
 	l.size=s
 	root.add_child(l)
 	return l
+
+func status_art(parent: Control, file: String, pos: Vector2, dimensions: Vector2) -> TextureRect:
+	var art := TextureRect.new()
+	art.texture=load(PLAYER_HUD+file)
+	art.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode=TextureRect.STRETCH_SCALE
+	art.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	parent.add_child(art)
+	art.position=pos
+	art.size=dimensions
+	return art
+
+func status_text(parent: Control, pos: Vector2, dimensions: Vector2, font_size: int) -> Label:
+	var l := Label.new()
+	l.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	l.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override("font_size",font_size)
+	l.add_theme_color_override("font_outline_color",Color("111318"))
+	l.add_theme_constant_override("outline_size",4)
+	parent.add_child(l)
+	l.position=pos
+	l.size=dimensions
+	return l
+
+func build_player_status():
+	player_status=Control.new()
+	player_status.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	root.add_child(player_status)
+	player_status.position=Vector2(18,14)
+	player_status.size=Vector2(344,108)
+	status_art(player_status,"02_nameplate.png",Vector2(77,0),Vector2(267,29))
+	status_name=status_text(player_status,Vector2(94,0),Vector2(232,29),19)
+	for i in range(2):
+		var p := Vector2(83,31+i*25)
+		status_art(player_status,"04_bar_track.png",p,Vector2(261,24))
+		var clip := Control.new()
+		clip.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		clip.clip_contents=true
+		player_status.add_child(clip)
+		clip.position=p+Vector2(4,4)
+		clip.size=Vector2(253,16)
+		status_art(clip,["05_hp_fill.png","06_mp_fill.png"][i],Vector2.ZERO,Vector2(253,16))
+		status_fill_clips.append(clip)
+		var l := status_text(player_status,p,Vector2(261,24),15)
+		if i==0: status_hp=l
+		else: status_mp=l
+	status_art(player_status,"01_portrait_frame.png",Vector2.ZERO,Vector2(92,92))
+	var portrait := TextureRect.new()
+	portrait.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	portrait.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	portrait.position=Vector2(15,10)
+	portrait.size=Vector2(62,68)
+	player_status.add_child(portrait)
+	status_portrait_view=SubViewport.new()
+	status_portrait_view.size=Vector2i(124,136)
+	status_portrait_view.own_world_3d=true
+	status_portrait_view.transparent_bg=true
+	status_portrait_view.render_target_update_mode=SubViewport.UPDATE_ONCE
+	portrait.add_child(status_portrait_view)
+	portrait.texture=status_portrait_view.get_texture()
+	status_portrait=game.player_visual.duplicate()
+	status_portrait.position=Vector3.ZERO
+	status_portrait.rotation=Vector3(0,PI,0)
+	status_portrait_view.add_child(status_portrait)
+	var cam := Camera3D.new()
+	cam.projection=Camera3D.PROJECTION_ORTHOGONAL
+	cam.size=0.88
+	cam.position=Vector3(0,1.51,4)
+	status_portrait_view.add_child(cam)
+	cam.current=true
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees=Vector3(-25,20,0)
+	light.light_energy=1.6
+	status_portrait_view.add_child(light)
+	status_art(player_status,"03_level_badge.png",Vector2(15,69),Vector2(62,24))
+	status_level=status_text(player_status,Vector2(15,69),Vector2(62,24),13)
+	stats=status_text(player_status,Vector2(93,82),Vector2(250,22),13)
+	stats.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
+
+func refresh_player_status():
+	status_name.text=localized("นักรบ","Warrior","战士")
+	status_level.text="LV %d"%game.level
+	status_hp.text="HP  %d / 100"%game.hp
+	status_mp.text="MP  %d / 100"%game.mp
+	status_fill_clips[0].size.x=253.0*clampf(game.hp/100.0,0,1)
+	status_fill_clips[1].size.x=253.0*clampf(game.mp/100.0,0,1)
+	stats.text="EXP %d/100   Gold %d   v0.1.24"%[game.xp,game.coins]
+	if status_portrait_male!=game.male:
+		status_portrait_male=game.male
+		status_portrait.scale=game.player_visual.scale
+		status_portrait_view.render_target_update_mode=SubViewport.UPDATE_ONCE
 
 func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	var b := Button.new()
@@ -494,11 +602,8 @@ func _process(delta):
 			quest_tracker.text=QUEST_PAGE.title(self,tracked_quest)+"\n%d / %d"%[mini(game.quest_progress(tracked_quest),game.quest_goal(tracked_quest)),game.quest_goal(tracked_quest)]
 	joystick_knob.position=(joystick.size-joystick_knob.size)*0.5+game.stick*(joystick.size.x-joystick_knob.size.x)*0.5
 	if selected_page=="Character": refresh_character_details()
-	if meter_fills.size()==3:
-		meter_fills[0].value=game.hp
-		meter_fills[1].value=game.mp
-		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.23  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	if meter_fills.size()==1: meter_fills[0].value=game.xp
+	refresh_player_status()
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -518,7 +623,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.23","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.24","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
