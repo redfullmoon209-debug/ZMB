@@ -47,6 +47,12 @@ var previous_play_seconds := 0
 var first_play_unix := 0
 var playtime_save_timer := 0.0
 var monsters_defeated := 0
+var shards_collected := 0
+var quest_claimed: Dictionary = {}
+var daily_bosses := 0
+var daily_day := ""
+var daily_claimed := false
+var daily_config := ConfigFile.new()
 var playtime_config := ConfigFile.new()
 
 func session_seconds() -> int:
@@ -66,6 +72,11 @@ func _notification(what: int):
 		save_playtime()
 
 func _ready():
+	daily_config.load("user://zmb_daily.cfg")
+	daily_day=str(daily_config.get_value("daily","day",""))
+	daily_bosses=int(daily_config.get_value("daily","bosses",0))
+	daily_claimed=bool(daily_config.get_value("daily","claimed",false))
+	refresh_daily()
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
@@ -269,6 +280,10 @@ func attack(skill: int):
 		n.set_meta("hp",float(n.get_meta("hp"))-15-skill*7)
 		if n.get_meta("hp")<=0:
 			monsters_defeated+=1
+			if int(n.get_meta("tier"))==2:
+				refresh_daily()
+				daily_bosses+=1
+				save_daily()
 			var drop := box(n.position+Vector3.UP*0.25,Vector3(0.5,0.5,0.5),Color("e7c46d"),self)
 			loot.append(drop)
 			xp += 25
@@ -285,9 +300,50 @@ func collect():
 	for d in loot.duplicate():
 		if player.position.distance_to(d.position)<4 and items.size()<48:
 			items.append("Spirit shard")
+			shards_collected+=1
 			coins+=5
 			loot.erase(d)
 			d.queue_free()
+
+func save_daily():
+	daily_config.set_value("daily","day",daily_day)
+	daily_config.set_value("daily","bosses",daily_bosses)
+	daily_config.set_value("daily","claimed",daily_claimed)
+	daily_config.save("user://zmb_daily.cfg")
+
+func refresh_daily():
+	var today := Time.get_date_string_from_system(true)
+	if today!=daily_day:
+		daily_day=today
+		daily_bosses=0
+		daily_claimed=false
+		save_daily()
+
+func quest_progress(id: String) -> int:
+	match id:
+		"main": return monsters_defeated
+		"side": return shards_collected
+		"daily": refresh_daily();return daily_bosses
+	return 0
+
+func quest_goal(id: String) -> int:
+	return int({"main":30,"side":10,"daily":3}.get(id,0))
+
+func quest_reward(id: String) -> int:
+	return int({"main":100,"side":50,"daily":150}.get(id,0))
+
+func is_quest_claimed(id: String) -> bool:
+	if id=="daily": refresh_daily();return daily_claimed
+	return quest_claimed.has(id)
+
+func claim_quest(id: String) -> bool:
+	if not started or quest_goal(id)<=0 or is_quest_claimed(id) or quest_progress(id)<quest_goal(id): return false
+	if id=="daily":
+		daily_claimed=true
+		save_daily()
+	else: quest_claimed[id]=true
+	coins+=quest_reward(id)
+	return true
 
 func revive():
 	hp=100

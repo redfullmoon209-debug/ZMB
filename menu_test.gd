@@ -100,6 +100,24 @@ func run():
 			node.pressed.emit()
 			break
 	assert(world.coins==15 and hud.shop_history.size()==1 and world.items.size()==1)
+	for category in range(4):
+		hud.quest_tab=category
+		hud.open_page("Quest")
+		await process_frame
+		assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+	hud.quest_tab=0
+	hud.open_page("Quest")
+	await process_frame
+	assert(hud.quest_claim_button.disabled)
+	assert(not world.claim_quest("main"))
+	world.monsters_defeated=30
+	hud.update_quest_ui()
+	assert(not hud.quest_claim_button.disabled)
+	hud.quest_claim_button.pressed.emit()
+	await process_frame
+	assert(world.coins==115 and world.is_quest_claimed("main") and hud.quest_tab==3)
+	assert(not world.claim_quest("main"))
+	print("PASS: four quest tabs, progress and one-time rewards")
 	print("PASS: news, ranking, 50-slot shops and local gold purchase")
 	print("PASS: seven categories, camera setting, HUD drag and cancel")
 	print("PASS: all ten right-to-left menu icons visible, selecting a category and dragging long menus works")

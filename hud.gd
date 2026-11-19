@@ -32,6 +32,16 @@ var swallow_scroll_release := false
 var menu_items: Dictionary = {}
 var settings_category := 0
 var news_tab := 0
+var quest_tab := 0
+var quest_selected := "main"
+var tracked_quest := ""
+var quest_tracker: Label
+var quest_list_status: Dictionary = {}
+var quest_detail_status: Label
+var quest_detail_bar: ProgressBar
+var quest_claim_button: Button
+var quest_countdown: Label
+const QUEST_PAGE = preload("res://quest_page.gd")
 var news_selected := 0
 var shop_tab := 0
 var shop_category := 0
@@ -196,6 +206,10 @@ func _ready():
 	editable_hud["ZONE"]=zone_label
 	editable_hud["CHAT"]=chat
 	editable_hud["MAP"]=minimap
+	quest_tracker=label("",Vector2(22,172),Vector2(310,68))
+	quest_tracker.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	quest_tracker.add_theme_font_size_override("font_size",16)
+	editable_hud["QUEST TRACKER"]=quest_tracker
 	for i in range(meter_fills.size()): editable_hud["METER %d"%i]=meter_fills[i]
 	for key in editable_hud:
 		var c: Control=editable_hud[key]
@@ -440,13 +454,20 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
+	if selected_page=="Quest": update_quest_ui()
+	if is_instance_valid(quest_tracker):
+		quest_tracker.visible=not tracked_quest.is_empty() or is_instance_valid(editor_panel)
+		if tracked_quest.is_empty():
+			quest_tracker.text=trn("Quest")
+		else:
+			quest_tracker.text=QUEST_PAGE.title(self,tracked_quest)+"\n%d / %d"%[mini(game.quest_progress(tracked_quest),game.quest_goal(tracked_quest)),game.quest_goal(tracked_quest)]
 	joystick_knob.position=(joystick.size-joystick_knob.size)*0.5+game.stick*(joystick.size.x-joystick_knob.size.x)*0.5
 	if selected_page=="Character": refresh_character_details()
 	if meter_fills.size()==3:
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.20  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.21  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -466,13 +487,18 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.20","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.21","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
 
 func close_page():
 	character_values.clear()
+	quest_list_status.clear()
+	quest_detail_status=null
+	quest_detail_bar=null
+	quest_claim_button=null
+	quest_countdown=null
 	if is_instance_valid(panel): panel.queue_free()
 	panel=null
 	close_button=null
@@ -481,6 +507,21 @@ func close_page():
 	scroll_finger=-1
 	scroll_dragged=false
 	selected_page=""
+
+func update_quest_ui():
+	for id in quest_list_status:
+		var progress: int=mini(game.quest_progress(id),game.quest_goal(id))
+		var status: String=localized("รับแล้ว","Claimed","已领取") if game.is_quest_claimed(id) else (localized("พร้อมรับรางวัล","Ready to claim","可领取") if progress>=game.quest_goal(id) else localized("กำลังดำเนินการ","In progress","进行中"))
+		quest_list_status[id].text="%s  •  %d / %d"%[status,progress,game.quest_goal(id)]
+	if is_instance_valid(quest_detail_bar):
+		var current: int=mini(game.quest_progress(quest_selected),game.quest_goal(quest_selected))
+		quest_detail_bar.value=current
+		quest_detail_status.text=localized("ความคืบหน้า","Progress","进度")+"  %d / %d"%[current,game.quest_goal(quest_selected)]
+		if is_instance_valid(quest_claim_button):
+			quest_claim_button.disabled=current<game.quest_goal(quest_selected) or game.is_quest_claimed(quest_selected)
+	if is_instance_valid(quest_countdown):
+		var remaining: int=86400-int(Time.get_unix_time_from_system())%86400
+		quest_countdown.text=localized("รีเซ็ตใน","Resets in","重置倒计时")+"  "+format_playtime(remaining)
 
 func add_button(parent:Node,t:String,action:Callable):
 	var b := Button.new()
@@ -1065,7 +1106,7 @@ func open_page(page:String):
 	if page in INVENTORY_PAGES:
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
-	if page in ["Settings","News","Ranking","Shop"]:
+	if page in ["Settings","News","Ranking","Shop","Quest"]:
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
 	panel.z_index=10
@@ -1137,7 +1178,7 @@ func open_page(page:String):
 			grid(row,30,5)
 		"Shop": preload("res://service_pages.gd").new().shop(self,content)
 		"Market": add_text(content,"Buy / Sell / My Listings / History\nOnline market not connected (demo).")
-		"Quest": add_text(content,"Main quest: Defeat spirits\nEXP: %d / 100\nSide / Daily / Completed preview"%game.xp)
+		"Quest": QUEST_PAGE.build(self,content)
 		"Social": add_text(content,"Friends / Party / Guild\nOnline backend not connected.")
 		"Ranking": preload("res://service_pages.gd").new().ranking(self,content)
 		"News": preload("res://service_pages.gd").new().news(self,content)
