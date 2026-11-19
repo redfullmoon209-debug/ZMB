@@ -20,6 +20,15 @@ var web_diagnostics := false
 var diagnostic_timer := 0.0
 var browser_window: JavaScriptObject
 var start_button: Button
+var close_button: Button
+var modal_scroll: ScrollContainer
+var scroll_finger := -1
+var scroll_start := Vector2.ZERO
+var scroll_start_value := 0
+var scroll_dragged := false
+var swallow_scroll_release := false
+var menu_items: Dictionary = {}
+const MENU_PAGES = ["Bag","Quest","Social","Trade","Market","Shop","Ranking","News","Map","Settings"]
 var config := ConfigFile.new()
 var names := {"Bag":["กระเป๋า","Bag","背包"],"Storage":["คลัง","Storage","仓库"],"Character":["ตัวละคร","Character","角色"],"Skills":["สกิล","Skills","技能"],"Market":["ตลาดโลก","Market","市场"],"Shop":["ร้านค้า","Shop","商店"],"Quest":["เควส","Quest","任务"],"Social":["สังคม","Social","社交"],"Ranking":["อันดับ","Ranking","排行"],"News":["ประกาศ","News","公告"],"Settings":["ตั้งค่า","Settings","设置"],"Trade":["แลกเปลี่ยน","Trade","交易"],"Map":["แผนที่","Map","地图"]}
 
@@ -180,8 +189,44 @@ func _touch_end(index: int) -> bool:
 func _reset_touches():
 	captured_touches.clear()
 	camera_touches.clear()
+	scroll_finger=-1
+	scroll_dragged=false
+	swallow_scroll_release=false
 	joystick_finger = -1
 	game.stick = Vector2.ZERO
+
+func _modal_scroll_input(event: InputEvent) -> bool:
+	if not is_instance_valid(modal_scroll): return false
+	if event is InputEventScreenTouch:
+		if event.pressed and not event.canceled:
+			var bar := modal_scroll.get_v_scroll_bar()
+			if scroll_finger==-1 and modal_scroll.get_global_rect().has_point(event.position) and bar.max_value-bar.page>1:
+				scroll_finger=event.index
+				scroll_start=event.position
+				scroll_start_value=modal_scroll.scroll_vertical
+				scroll_dragged=false
+				swallow_scroll_release=false
+		elif scroll_finger==event.index:
+			var was_dragged := scroll_dragged
+			scroll_finger=-1
+			scroll_dragged=false
+			swallow_scroll_release=was_dragged
+			return was_dragged
+	elif event is InputEventScreenDrag and event.index==scroll_finger:
+		var displacement: float = event.position.y-scroll_start.y
+		if not scroll_dragged and absf(displacement)>12.0:
+			scroll_dragged=true
+			# Cancel an emulated press on a child button before scrolling so a
+			# swipe never accidentally activates a menu or a spin-box button.
+			var release := InputEventMouseButton.new()
+			release.button_index=MOUSE_BUTTON_LEFT
+			release.position=Vector2(-100,-100)
+			release.pressed=false
+			get_viewport().push_input(release,true)
+		if scroll_dragged:
+			modal_scroll.scroll_vertical=int(scroll_start_value-displacement)
+			return true
+	return false
 
 func _input(event: InputEvent):
 	if not is_instance_valid(joystick):
@@ -189,8 +234,16 @@ func _input(event: InputEvent):
 	# Godot's mouse emulation represents only one finger. HUD controls use
 	# actual touch indices instead, while popup menus still use mouse emulation.
 	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+		if event is InputEventMouseButton and event.pressed: swallow_scroll_release=false
+		if scroll_dragged or swallow_scroll_release:
+			if event is InputEventMouseButton and not event.pressed: swallow_scroll_release=false
+			get_viewport().set_input_as_handled()
+			return
 		if not captured_touches.is_empty() or not camera_touches.is_empty():
 			get_viewport().set_input_as_handled()
+		return
+	if _modal_scroll_input(event):
+		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventScreenTouch:
 		if not event.pressed or event.canceled:
@@ -216,7 +269,7 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
-	stats.text="ZMB v0.1.5  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.6  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -233,7 +286,10 @@ func _process(delta):
 		var controls := {}
 		for b in buttons: controls[b.get_meta("hud_key",b.text)] = _web_rect(b)
 		if is_instance_valid(start_button): controls["START"] = _web_rect(start_button)
-		var d := {"version":"0.1.5","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
+		var menu_rects := {}
+		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
+		var d := {"version":"0.1.6","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -241,6 +297,11 @@ func _process(delta):
 func close_page():
 	if is_instance_valid(panel): panel.queue_free()
 	panel=null
+	close_button=null
+	modal_scroll=null
+	menu_items.clear()
+	scroll_finger=-1
+	scroll_dragged=false
 	selected_page=""
 
 func add_button(parent:Node,t:String,action:Callable):
@@ -268,7 +329,40 @@ func grid(parent:Node,count:int,columns:int,contents:Array=[]):
 		g.add_child(b)
 	return g
 
+func build_quick_menu():
+	# A single horizontal strip, with the first category anchored on the
+	# right next to MENU. All categories fit within the landscape viewport.
+	panel.position=Vector2(215,82)
+	panel.size=Vector2(1040,112)
+	panel.z_index=20
+	var margin := MarginContainer.new()
+	for side in ["left","right","top","bottom"]:
+		margin.add_theme_constant_override("margin_"+side,8)
+	panel.add_child(margin)
+	var row := HBoxContainer.new()
+	row.layout_direction=Control.LAYOUT_DIRECTION_RTL
+	row.add_theme_constant_override("separation",6)
+	margin.add_child(row)
+	for key in MENU_PAGES:
+		var b := Button.new()
+		b.text=trn(key)
+		b.tooltip_text=trn(key)
+		b.custom_minimum_size=Vector2(82,94)
+		b.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		b.clip_text=true
+		b.icon=load("res://assets/menu_icons/"+key.to_lower()+".png")
+		b.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment=VERTICAL_ALIGNMENT_TOP
+		b.add_theme_constant_override("icon_max_width",38)
+		b.add_theme_font_size_override("font_size",16)
+		b.pressed.connect(func():open_page(key))
+		row.add_child(b)
+		menu_items[key]=b
+
 func open_page(page:String):
+	if page=="Menu" and selected_page=="Menu":
+		close_page()
+		return
 	joystick_finger = -1
 	camera_touches.clear()
 	game.stick = Vector2.ZERO
@@ -276,6 +370,9 @@ func open_page(page:String):
 	selected_page=page
 	panel=PanelContainer.new()
 	root.add_child(panel)
+	if page=="Menu":
+		build_quick_menu()
+		return
 	panel.position=Vector2(175,100)
 	panel.size=Vector2(930,520)
 	panel.z_index=10
@@ -292,8 +389,10 @@ func open_page(page:String):
 	header.add_child(title)
 	for i in range(3):
 		add_button(header,["ไทย","EN","中文"][i],func(): lang=i; config.set_value("ui","lang",lang); config.save("user://zmb.cfg"); open_page(page))
-	if page not in ["Start","Revive"]: add_button(header,"✕",close_page)
+	if page not in ["Start","Revive"]: close_button=add_button(header,"✕",close_page)
 	var scroll := ScrollContainer.new()
+	modal_scroll=scroll
+	scroll.scroll_deadzone=12
 	scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	body.add_child(scroll)
 	var content := VBoxContainer.new()
@@ -304,8 +403,6 @@ func open_page(page:String):
 			add_text(content,"ZMB • SPIRIT PLAGUE\nAncient China | Offline prototype\nSelect a character to enter the village.")
 			start_button=add_button(content,"Male warrior",func():game.begin(true);close_page())
 			add_button(content,"Female warrior",func():game.begin(false);close_page())
-		"Menu":
-			for k in names.keys(): add_button(content,trn(k),func():open_page(k))
 		"Bag","Storage","Character","Skills":
 			var tabs := HBoxContainer.new()
 			content.add_child(tabs)

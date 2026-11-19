@@ -34,6 +34,7 @@ jobs:
           timeout 20s godot --headless --script multitouch_test.gd
           timeout 20s godot --headless --script safe_zone_test.gd
           timeout 20s godot --headless --script camera_test.gd
+          timeout 20s godot --headless --script menu_test.gd
       - name: Export Web
         run: |
           mkdir -p build
