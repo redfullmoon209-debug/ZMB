@@ -1,5 +1,9 @@
 # ZMB v0.1 — Offline prototype
 
+## v0.1.10 — Refit inventory popup
+
+Draw the visible popup artwork region without the transparent image padding. Enlarge the inventory panel, move its navigation and content down, and leave a 40-pixel horizontal inset and 68-pixel top inset. The updated regression verifies both header and inventory content remain inside the frame in all three languages.
+
 ## v0.1.9 — Popup frame containment
 
 All popup controls are inset past the visible artwork border, with extra top/bottom clearance for transparent PNG padding, clipped content and compact equal inventory columns. Language and close controls stay inside the frame; the inventory regression checks the header and scrolling area bounds across all three languages.

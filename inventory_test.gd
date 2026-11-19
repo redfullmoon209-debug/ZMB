@@ -18,7 +18,8 @@ func run():
 			var rect: Rect2=hud.panel.get_global_rect()
 			assert(rect.end.x<=1280 and rect.end.y<=720)
 			var header: HBoxContainer=hud.body.get_child(0)
-			var interior := rect.grow(-28.0)
+			var interior := rect.grow(-39.0)
+			assert(header.get_global_rect().position.y>=rect.position.y+68)
 			assert(interior.encloses(header.get_global_rect()))
 			assert(interior.encloses(hud.modal_scroll.get_global_rect()))
 			for control in header.get_children():
@@ -27,6 +28,11 @@ func run():
 			assert(lang_button.get_popup().item_count==3)
 			var row: HBoxContainer=hud.modal_scroll.get_child(0).get_child(0)
 			assert(absf(row.get_child(0).size.x-row.get_child(2).size.x)<2)
+			assert(interior.encloses(row.get_global_rect()))
+			if page in ["Bag","Storage"]:
+				for column in [row.get_child(0),row.get_child(2)]:
+					for child in column.get_children():
+						assert(interior.encloses(child.get_global_rect()))
 			if page=="Bag":
 				assert(row.get_child(2).get_child(1).get_child_count()==48)
 				assert(row.get_child(0).get_child(1).get_child(1) is SubViewportContainer)
