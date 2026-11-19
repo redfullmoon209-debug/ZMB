@@ -32,6 +32,19 @@ var swallow_scroll_release := false
 var menu_items: Dictionary = {}
 var settings_category := 0
 var news_tab := 0
+var social_tab := 0
+var social_sub := 0
+var social_split := 0
+var trade_selected: Dictionary = {}
+var trade_gold := 0
+var market_tab := 0
+var market_selected := -1
+var market_listings: Array = []
+var market_history: Array = []
+var market_filter := ""
+var market_sort := 0
+var warp_selected := 0
+const ONLINE_PAGES=preload("res://online_pages.gd")
 var quest_tab := 0
 var quest_selected := "main"
 var tracked_quest := ""
@@ -467,7 +480,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.21  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.22  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -487,7 +500,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.21","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.22","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -1106,7 +1119,7 @@ func open_page(page:String):
 	if page in INVENTORY_PAGES:
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
-	if page in ["Settings","News","Ranking","Shop","Quest"]:
+	if page in ["Settings","News","Ranking","Shop","Quest","Social","Trade","Market","Map"]:
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
 	panel.z_index=10
@@ -1169,17 +1182,11 @@ func open_page(page:String):
 		"Revive":
 			add_text(content,"You fell to the spirit plague.")
 			add_button(content,"Revive",func():game.revive(); close_page())
-		"Trade":
-			add_text(content,"Offline layout preview — trading requires server")
-			var row := HBoxContainer.new()
-			content.add_child(row)
-			grid(row,48,8,game.items)
-			grid(row,30,5)
-			grid(row,30,5)
+		"Trade": ONLINE_PAGES.trade(self,content)
 		"Shop": preload("res://service_pages.gd").new().shop(self,content)
-		"Market": add_text(content,"Buy / Sell / My Listings / History\nOnline market not connected (demo).")
+		"Market": ONLINE_PAGES.market(self,content)
 		"Quest": QUEST_PAGE.build(self,content)
-		"Social": add_text(content,"Friends / Party / Guild\nOnline backend not connected.")
+		"Social": ONLINE_PAGES.social(self,content)
 		"Ranking": preload("res://service_pages.gd").new().ranking(self,content)
 		"News": preload("res://service_pages.gd").new().news(self,content)
-		"Map": add_text(content,"Spirit Village • Safe Zone (26 × 26 m)\nFour gates lead to the hunting grounds.\nNormal → outer Elite → Boss\nPosition: %s"%str(game.player.position))
+		"Map": ONLINE_PAGES.world_map(self,content)

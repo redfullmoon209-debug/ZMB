@@ -118,6 +118,49 @@ func run():
 	assert(world.coins==115 and world.is_quest_claimed("main") and hud.quest_tab==3)
 	assert(not world.claim_quest("main"))
 	print("PASS: four quest tabs, progress and one-time rewards")
+	for category in range(3):
+		hud.social_tab=category
+		for sub in range(3):
+			hud.social_sub=sub
+			hud.open_page("Social")
+			await process_frame
+			assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+	hud.open_page("Trade")
+	await process_frame
+	var trade_grids: Array=hud.panel.find_children("*","GridContainer",true,false)
+	assert(trade_grids.size()==3)
+	assert(trade_grids[0].get_child_count()==48 and trade_grids[1].get_child_count()==30 and trade_grids[2].get_child_count()==30)
+	trade_grids[0].get_child(0).pressed.emit()
+	assert(hud.trade_selected.size()==1 and world.items.size()==1)
+	for category in range(4):
+		hud.market_tab=category
+		hud.open_page("Market")
+		await process_frame
+		assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+	hud.market_tab=1
+	hud.market_selected=0
+	hud.open_page("Market")
+	await process_frame
+	for node in hud.panel.find_children("*","Button",true,false):
+		if node.text==hud.localized("ยืนยันลงขาย (ทดสอบ)","Confirm listing (demo)","确认挂单（测试）"):
+			node.pressed.emit()
+			break
+	assert(world.items.is_empty() and hud.market_listings.size()==1)
+	await process_frame
+	for node in hud.panel.find_children("*","Button",true,false):
+		if node.text==hud.localized("ยกเลิก","Cancel","取消"):
+			node.pressed.emit()
+			break
+	assert(world.items.size()==1 and hud.market_listings.is_empty() and hud.market_history.size()==1)
+	hud.warp_selected=1
+	hud.open_page("Map")
+	await process_frame
+	for node in hud.panel.find_children("*","Button",true,false):
+		if node.text==hud.localized("ยืนยันวาร์ป","Confirm warp","确认传送"):
+			node.pressed.emit()
+			break
+	assert(world.player.position.distance_to(Vector3(0,0,-11))<0.1)
+	print("PASS: social tabs, trade slots, market escrow/cancel and safe-zone warp")
 	print("PASS: news, ranking, 50-slot shops and local gold purchase")
 	print("PASS: seven categories, camera setting, HUD drag and cancel")
 	print("PASS: all ten right-to-left menu icons visible, selecting a category and dragging long menus works")
