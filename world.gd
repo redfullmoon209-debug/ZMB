@@ -1,6 +1,7 @@
 extends Node3D
 
 const HUD = preload("res://hud.gd")
+const Catalog = preload("res://item_catalog.gd")
 const SAFE_HALF := 13.0
 const GATE_HALF := 3.0
 const RESPAWN_POINT := Vector3.ZERO
@@ -18,6 +19,55 @@ var xp := 0
 var level := 1
 var coins := 0
 var items: Array[String] = []
+var equipment: Dictionary = {}
+var profile_path := ""
+
+func bonus(stat: String) -> float:
+	var sum := 0.0
+	for id in equipment.values(): sum+=float(Catalog.describe(id).get(stat,0))
+	return sum
+
+func max_hp() -> float: return 100.0+bonus("hp")
+func max_mp() -> float: return 100.0+bonus("mp")
+func attack_power() -> float: return gm_attack_power+bonus("attack")
+func defense_power() -> float: return gm_defense+bonus("defense")
+
+func equip_item(index: int, slot: String) -> bool:
+	if index<0 or index>=items.size(): return false
+	var id := items[index]
+	if slot not in Catalog.describe(id).slots: return false
+	items.remove_at(index)
+	if equipment.has(slot): items.append(equipment[slot])
+	equipment[slot]=id
+	hp=minf(hp,max_hp()); mp=minf(mp,max_mp())
+	ui.trade_selected.clear(); ui.market_selected=-1
+	save_profile()
+	return true
+
+func unequip_item(slot: String) -> bool:
+	if not equipment.has(slot) or items.size()>=48: return false
+	items.append(equipment[slot]); equipment.erase(slot)
+	hp=minf(hp,max_hp()); mp=minf(mp,max_mp())
+	ui.trade_selected.clear(); ui.market_selected=-1
+	save_profile()
+	return true
+
+func save_profile():
+	if profile_path.is_empty() or not started: return
+	var cfg := ConfigFile.new()
+	for key in ["items","equipment","coins","xp","level","monsters_defeated","shards_collected","quest_claimed"]:
+		cfg.set_value("character",key,get(key))
+	cfg.save(profile_path)
+
+func load_profile(path: String):
+	profile_path=path
+	var cfg := ConfigFile.new()
+	if cfg.load(path)!=OK: return
+	items.assign(cfg.get_value("character","items",[]))
+	equipment=cfg.get_value("character","equipment",{})
+	for key in ["coins","xp","level","monsters_defeated","shards_collected","quest_claimed"]:
+		set(key,cfg.get_value("character",key,get(key)))
+	hp=max_hp(); mp=max_mp()
 var auto := false
 var run_mode := false
 var weapon := 0
@@ -95,10 +145,10 @@ func gm_execute(command: String, value: float=0, item: String="") -> bool:
 			level=clampi(level+amount,1,1000)
 		"hp":
 			if locked: gm_target.set_meta("hp",clampf(float(gm_target.get_meta("hp"))+value,0,40+80*int(gm_target.get_meta("tier"))))
-			else: hp=clampf(hp+value,0,100)
+			else: hp=clampf(hp+value,0,max_hp())
 		"mp":
 			if locked: return false
-			mp=clampf(mp+value,0,100)
+			mp=clampf(mp+value,0,max_mp())
 		"attack":
 			if locked: return false
 			gm_attack_power=clampf(gm_attack_power+value,0,100000)
@@ -177,6 +227,7 @@ func total_play_seconds() -> int:
 	return previous_play_seconds+session_seconds()
 
 func save_playtime():
+	save_profile()
 	if session_started_msec<0: return
 	playtime_config.set_value("playtime","seconds",total_play_seconds())
 	playtime_config.set_value("playtime","first_play_unix",first_play_unix)
@@ -463,10 +514,12 @@ func show_damage_number(pos: Vector3, amount: int, critical: bool):
 	number.pixel_size=0.008
 	number.billboard=BaseMaterial3D.BILLBOARD_ENABLED
 	number.no_depth_test=true
+	number.visible=false # Screen-space HUD handles legibility at every zoom.
 	number.set_meta("damage_number",true)
 	number.set_meta("critical",critical)
 	add_child(number)
 	number.position=pos
+	ui.add_damage_overlay(number)
 	var animation := create_tween().set_parallel(true)
 	animation.tween_property(number,"position",pos+Vector3.UP*1.0,0.85).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	animation.tween_property(number,"modulate:a",0.0,0.35).set_delay(0.5)
@@ -474,8 +527,8 @@ func show_damage_number(pos: Vector3, amount: int, critical: bool):
 	animation.chain().tween_callback(number.queue_free)
 
 func deal_damage(victim: Node3D, skill: int):
-	var critical := randf()<critical_chance
-	var amount := maxi(0,roundi((gm_attack_power+skill*7)*(CRITICAL_MULTIPLIER if critical else 1.0)))
+	var critical := randf()<clampf(critical_chance+bonus("crit"),0,1)
+	var amount := maxi(0,roundi((attack_power()+skill*7)*(CRITICAL_MULTIPLIER if critical else 1.0)))
 	victim.set_meta("hp",maxf(0,float(victim.get_meta("hp"))-amount))
 	if amount>0: show_damage_number(victim.position+Vector3.UP*(2.35*victim.scale.y),amount,critical)
 
@@ -520,6 +573,8 @@ func attack(skill: int):
 				daily_bosses+=1
 				save_daily()
 			var drop := box(n.position+Vector3.UP*0.25,Vector3(0.5,0.5,0.5),Color("e7c46d"),self)
+			drop.set_meta("item",Catalog.drop(int(n.get_meta("tier"))))
+			(drop.material_override as StandardMaterial3D).albedo_color=Catalog.describe(drop.get_meta("item")).color
 			loot.append(drop)
 			xp += 25
 			if xp>=100:
@@ -531,15 +586,19 @@ func attack(skill: int):
 			var spawn_index: int = n.get_meta("spawn_index")
 			var spawn_tier: int=int(n.get_meta("tier"))
 			get_tree().create_timer(5).timeout.connect(func(): spawn_enemy(spawn_index,spawn_tier))
+			save_profile()
 
 func collect(radius: float=4.0):
 	for d in loot.duplicate():
-		if player.position.distance_to(d.position)<radius and items.size()<48:
-			items.append("Spirit shard")
-			shards_collected+=1
+		var offset: Vector3 = player.position-d.position
+		if Vector2(offset.x,offset.z).length()<radius and absf(offset.y)<1.5 and items.size()<48:
+			var id: String=d.get_meta("item","Spirit shard")
+			items.append(id)
+			if id=="Spirit shard": shards_collected+=1
 			coins+=5
 			loot.erase(d)
 			d.queue_free()
+			save_profile()
 
 func save_daily():
 	daily_config.set_value("daily","day",daily_day)
@@ -585,8 +644,8 @@ func revive():
 	if attack_anim and attack_anim.is_valid(): attack_anim.kill()
 	player_visual.get_node("SwordArm").rotation=Vector3.ZERO
 	cooldown=0.0
-	hp=100
-	mp=100
+	hp=max_hp()
+	mp=max_mp()
 	player.position=RESPAWN_POINT
 	player.velocity=Vector3.ZERO
 	target=null
@@ -677,14 +736,14 @@ func _physics_process(delta: float):
 	cooldown=maxf(0,cooldown-delta)
 	auto_potion_cooldown=maxf(0,auto_potion_cooldown-delta)
 	if not in_safe_zone() and auto_potion_cooldown<=0:
-		if auto_hp_threshold>0 and hp<=auto_hp_threshold:
-			hp=minf(100,hp+35)
+		if auto_hp_threshold>0 and hp<=max_hp()*auto_hp_threshold/100.0:
+			hp=minf(max_hp(),hp+35)
 			auto_potion_cooldown=5.0
-		elif auto_mp_threshold>0 and mp<=auto_mp_threshold:
-			mp=minf(100,mp+35)
+		elif auto_mp_threshold>0 and mp<=max_mp()*auto_mp_threshold/100.0:
+			mp=minf(max_mp(),mp+35)
 			auto_potion_cooldown=5.0
 	dash_time=maxf(0,dash_time-delta)
-	mp=minf(100,mp+delta*2)
+	mp=minf(max_mp(),mp+delta*2)
 	var input := stick
 	input.x += float(Input.is_physical_key_pressed(KEY_D))-float(Input.is_physical_key_pressed(KEY_A))
 	input.y += float(Input.is_physical_key_pressed(KEY_S))-float(Input.is_physical_key_pressed(KEY_W))
@@ -699,8 +758,8 @@ func _physics_process(delta: float):
 	if in_safe_zone():
 		auto=false
 		if not is_demo_target(target) or not is_safe_position(target.position): target=null
-		hp=minf(100.0,hp+delta*6.0)
-		mp=minf(100.0,mp+delta*4.0)
+		hp=minf(max_hp(),hp+delta*6.0)
+		mp=minf(max_mp(),mp+delta*4.0)
 	if auto:
 		if is_demo_target(target): target=null
 		if not is_instance_valid(target): choose_target()
@@ -721,7 +780,7 @@ func _physics_process(delta: float):
 	player.position.x=clampf(player.position.x,-40,40)
 	player.position.z=clampf(player.position.z,-40,40)
 	# Walking across the drop collects it even when auto-hunt is disabled.
-	collect(0.85)
+	collect(1.5)
 	var safe := in_safe_zone()
 	if safe:
 		auto=false
@@ -741,5 +800,5 @@ func _physics_process(delta: float):
 		if diff.length()<10 and diff.length()>1.6:
 			var next := n.position+Vector3(diff.x,0,diff.z).normalized()*delta*1.5
 			if not is_safe_position(next,0.6): n.position=next
-		elif diff.length()<=1.6 and not gm_invincible: hp=maxf(0,hp-delta*maxf(0,4-gm_defense))
+		elif diff.length()<=1.6 and not gm_invincible: hp=maxf(0,hp-delta*maxf(0,4-defense_power()))
 	update_camera(delta)

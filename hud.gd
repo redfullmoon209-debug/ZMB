@@ -13,6 +13,30 @@ var status_portrait: Node3D
 var status_portrait_view: SubViewport
 var status_portrait_male := true
 const PLAYER_HUD = "res://assets/player_hud/"
+const Catalog = preload("res://item_catalog.gd")
+var item_dialog: AcceptDialog
+var damage_overlays: Dictionary = {}
+
+func add_damage_overlay(number: Label3D):
+	var value := Label.new()
+	value.text=number.text
+	value.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	value.z_index=5
+	value.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	value.add_theme_font_size_override("font_size",42 if number.get_meta("critical") else 32)
+	value.add_theme_color_override("font_color",number.modulate)
+	value.add_theme_color_override("font_outline_color",Color("111318"))
+	value.add_theme_constant_override("outline_size",7)
+	root.add_child(value)
+	damage_overlays[number]=value
+	number.tree_exiting.connect(func():damage_overlays.erase(number);value.queue_free())
+
+func update_damage_overlays():
+	for number in damage_overlays:
+		var value: Label=damage_overlays[number]
+		value.visible=not game.camera.is_position_behind(number.global_position)
+		value.position=game.camera.unproject_position(number.global_position)-value.size*0.5
+		value.modulate.a=number.modulate.a
 var target_label: Label
 var target_status: Control
 var target_bar: Control
@@ -248,8 +272,8 @@ func _ready():
 		if not game.in_safe_zone(): game.auto=not game.auto)
 	make_button("MONSTER",Vector2(1083,211),Vector2(70,70),func():game.choose_target())
 	make_button("PLAYER",Vector2(1163,211),Vector2(70,70),func():game.choose_player_target())
-	make_button("HP",Vector2(529,577),Vector2(64,64),func():game.hp=minf(100,game.hp+35))
-	make_button("MP",Vector2(685,577),Vector2(64,64),func():game.mp=minf(100,game.mp+35))
+	make_button("HP",Vector2(529,577),Vector2(64,64),func():game.hp=minf(game.max_hp(),game.hp+35))
+	make_button("MP",Vector2(685,577),Vector2(64,64),func():game.mp=minf(game.max_mp(),game.mp+35))
 	game.set_camera_follow(bool(config.get_value("camera","follow",false)))
 	camera_mode_button=make_button("CAMERA",Vector2(1105,164),Vector2(155,40),func():
 		game.set_camera_follow(not game.camera_follow)
@@ -384,13 +408,13 @@ func build_player_status():
 func refresh_player_status():
 	status_name.text=game.character_name
 	status_level.text="LV %d"%game.level
-	status_hp.text="HP  %d / 100"%game.hp
-	status_mp.text="MP  %d / 100"%game.mp
+	status_hp.text="HP  %d / %d"%[game.hp,game.max_hp()]
+	status_mp.text="MP  %d / %d"%[game.mp,game.max_mp()]
 	status_exp.text="EXP  %d / 100"%game.xp
-	status_fill_clips[0].size.x=253.0*clampf(game.hp/100.0,0,1)
-	status_fill_clips[1].size.x=253.0*clampf(game.mp/100.0,0,1)
+	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
+	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.30"%game.coins
+	stats.text="Gold %d   v0.1.31"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -714,6 +738,7 @@ func _modal_scroll_input(event: InputEvent) -> bool:
 func _input(event: InputEvent):
 	if not is_instance_valid(joystick):
 		return
+	if is_instance_valid(item_dialog) and item_dialog.visible: return
 	if is_instance_valid(editor_panel):
 		if editor_input(event): get_viewport().set_input_as_handled()
 		return
@@ -755,6 +780,7 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
+	update_damage_overlays()
 	if is_instance_valid(gm_button):
 		gm_button.visible=game.gm_allowed()
 		gm_notice.text=game.gm_announcement if game.gm_allowed() else ""
@@ -787,7 +813,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.30","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.31","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -881,8 +907,43 @@ func inventory_grid(parent: Node, count: int, columns: int, contents: Array=[]):
 	for i in range(count):
 		var filled := i<contents.size()
 		var b := inventory_slot(g,"◆" if filled else "",Vector2(56,56),filled)
-		if filled: b.tooltip_text=str(contents[i])
+		if filled:
+			var id: String=contents[i]
+			var data := Catalog.describe(id)
+			b.text=data.icon
+			b.modulate=data.color
+			b.tooltip_text=id
+			if selected_page in ["Bag","Storage"]: b.pressed.connect(func(): show_item_details(id,i))
 	return g
+
+func show_item_details(id: String, index: int=-1, equipped_slot: String=""):
+	if is_instance_valid(item_dialog): item_dialog.queue_free()
+	var data := Catalog.describe(id)
+	var dialog := AcceptDialog.new()
+	item_dialog=dialog
+	dialog.title=id
+	dialog.dialog_text="%s  •  %s\nATK +%d   DEF +%d\nHP +%d   MP +%d   CRIT +%.0f%%\n%s: %d"%[data.icon,data.rarity,data.attack,data.defense,data.hp,data.mp,data.crit*100,localized("จำนวนในกระเป๋า","In bag","背包数量"),game.items.count(id)]
+	dialog.ok_button_text=localized("ปิด","Close","关闭")
+	root.add_child(dialog)
+	if not equipped_slot.is_empty(): dialog.add_button(localized("ถอด","Unequip","卸下"),true,"unequip")
+	else:
+		for slot in data.slots: dialog.add_button(localized("สวมใส่","Equip","装备")+" • "+slot,true,slot)
+	dialog.custom_action.connect(func(action):
+		var success: bool=game.unequip_item(equipped_slot) if action=="unequip" else (index<game.items.size() and game.items[index]==id and game.equip_item(index,action))
+		if success: dialog.queue_free();open_page("Bag"))
+	dialog.confirmed.connect(dialog.queue_free)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.popup_centered(Vector2i(440,230))
+
+func equipment_slot(parent: Node, title: String, slot: String, dimensions: Vector2):
+	var id: String=game.equipment.get(slot,"")
+	var b := inventory_slot(parent,title,dimensions,not id.is_empty())
+	if not id.is_empty():
+		var data := Catalog.describe(id)
+		b.text=data.icon+" "+title
+		b.modulate=data.color
+		b.tooltip_text=id
+		b.pressed.connect(func():show_item_details(id,-1,slot))
 
 func character_preview(parent: Node):
 	var vc := SubViewportContainer.new()
@@ -925,17 +986,17 @@ func equipment_preview(parent: Node):
 	parent.add_child(row)
 	var left := VBoxContainer.new()
 	row.add_child(left)
-	for title in [localized("ศีรษะ","Head","头部"),localized("เสื้อ","Armor","护甲"),localized("ถุงมือ","Gloves","手套"),localized("กางเกง","Legs","裤子"),localized("รองเท้า","Boots","鞋子")]:
-		inventory_slot(left,title,Vector2(86,57))
+	var titles := [localized("ศีรษะ","Head","头部"),localized("เสื้อ","Armor","护甲"),localized("ถุงมือ","Gloves","手套"),localized("กางเกง","Legs","裤子"),localized("รองเท้า","Boots","鞋子")]
+	for i in range(5): equipment_slot(left,titles[i],Catalog.SLOTS[i],Vector2(86,57))
 	character_preview(row)
 	var right := VBoxContainer.new()
 	row.add_child(right)
-	for title in [localized("อาวุธหลัก","Main weapon","主武器"),localized("อาวุธรอง","Off hand","副武器"),localized("สัตว์เก็บของ","Loot pet","拾取宠物")]:
-		inventory_slot(right,title,Vector2(86,70))
+	titles=[localized("อาวุธหลัก","Main weapon","主武器"),localized("อาวุธรอง","Off hand","副武器"),localized("สัตว์เก็บของ","Loot pet","拾取宠物")]
+	for i in range(3): equipment_slot(right,titles[i],Catalog.SLOTS[i+5],Vector2(86,70))
 	var accessories := HBoxContainer.new()
 	parent.add_child(accessories)
-	for title in [localized("กำไล","Bracelet","手镯"),localized("แหวน","Ring","戒指"),localized("สร้อย","Necklace","项链"),localized("แหวน","Ring","戒指"),localized("กำไล","Bracelet","手镯")]:
-		inventory_slot(accessories,title,Vector2(60,45))
+	titles=[localized("กำไล","Bracelet","手镯"),localized("แหวน","Ring","戒指"),localized("สร้อย","Necklace","项链"),localized("แหวน","Ring","戒指"),localized("กำไล","Bracelet","手镯")]
+	for i in range(5): equipment_slot(accessories,titles[i],Catalog.SLOTS[i+8],Vector2(60,45))
 
 func format_playtime(seconds: int) -> String:
 	return "%02d:%02d:%02d"%[int(seconds/3600.0),int(seconds/60.0)%60,seconds%60]
@@ -943,7 +1004,7 @@ func format_playtime(seconds: int) -> String:
 func build_character_details(parent: VBoxContainer):
 	parent.add_theme_constant_override("separation",3)
 	var spacer := Control.new()
-	spacer.custom_minimum_size.y=20
+	spacer.custom_minimum_size.y=8
 	parent.add_child(spacer)
 	var title := Label.new()
 	title.text=localized("ข้อมูลและพลังตัวละคร","Character statistics","角色属性")
@@ -965,6 +1026,7 @@ func build_character_details(parent: VBoxContainer):
 		"xp":localized("ค่าประสบการณ์","Experience","经验值"),
 		"attack":localized("พลังโจมตีพื้นฐาน","Base attack","基础攻击"),
 		"defense":localized("พลังป้องกัน","Defense","防御"),
+		"crit":localized("โอกาสคริติคอล","Critical chance","暴击率"),
 		"range":localized("ระยะโจมตี","Attack range","攻击距离"),
 		"attack_speed":localized("ความเร็วโจมตี","Attack speed","攻击速度"),
 		"movement":localized("ความเร็วเคลื่อนที่","Movement speed","移动速度"),
@@ -978,11 +1040,11 @@ func build_character_details(parent: VBoxContainer):
 	for key in fields:
 		var name_label := Label.new()
 		name_label.text=fields[key]
-		name_label.add_theme_font_size_override("font_size",13)
+		name_label.add_theme_font_size_override("font_size",12)
 		name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		details.add_child(name_label)
 		var value := Label.new()
-		value.add_theme_font_size_override("font_size",13)
+		value.add_theme_font_size_override("font_size",12)
 		value.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
 		if key=="name": value.auto_translate_mode=Node.AUTO_TRANSLATE_MODE_DISABLED
 		value.add_theme_color_override("font_color",Color("e8d4b6"))
@@ -1002,11 +1064,12 @@ func refresh_character_details():
 		"level":str(game.level),
 		"gender":localized("ชาย","Male","男") if game.male else localized("หญิง","Female","女"),
 		"weapon":[localized("ดาบ","Sword","剑"),localized("ทวน","Spear","枪"),localized("ปืน","Gun","火枪")][game.weapon],
-		"hp":"%d / 100"%game.hp,
-		"mp":"%d / 100"%game.mp,
+		"hp":"%d / %d"%[game.hp,game.max_hp()],
+		"mp":"%d / %d"%[game.mp,game.max_mp()],
 		"xp":"%d / 100"%game.xp,
-		"attack":str(game.gm_attack_power),
-		"defense":str(game.gm_defense),
+		"attack":str(game.attack_power()),
+		"defense":str(game.defense_power()),
+		"crit":"%.0f%%"%(clampf(game.critical_chance+game.bonus("crit"),0,1)*100),
 		"range":"%.1f m"%[2.7,5.5,12.0][game.weapon],
 		"attack_speed":"%.2f / s"%(game.gm_attack_multiplier/0.45),
 		"movement":"%.1f m/s"%(18.0 if game.dash_time>0 else (8.0 if game.run_mode else 4.5)*game.gm_move_multiplier),
@@ -1396,6 +1459,7 @@ func enter_named_character(chosen_name: String, is_male: bool):
 	config.set_value("character","name",game.character_name)
 	config.save("user://zmb.cfg")
 	game.begin(is_male)
+	game.load_profile("user://zmb_character_"+game.character_name.sha256_text()+".cfg")
 	close_page()
 
 func open_page(page:String):

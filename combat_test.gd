@@ -68,13 +68,15 @@ func run():
 				found_normal=true
 				assert(child.modulate.r==1.0 and child.modulate.g==1.0)
 	assert(found_crit and found_normal)
-	var drop: Node3D=world.box(world.player.position+Vector3(0,0.25,0),Vector3.ONE,Color.GOLD,world)
+	assert(world.ui.damage_overlays.size()>=2)
+	var drop: Node3D=world.box(world.player.position+Vector3(1.2,0.25,0),Vector3.ONE,Color.GOLD,world)
 	world.loot.append(drop)
 	var coins: int=world.coins
 	await physics_frame
 	await physics_frame
 	assert(world.coins==coins+5 and world.loot.is_empty())
 	await create_timer(1.0).timeout
+	assert(world.ui.damage_overlays.is_empty())
 	for child in world.get_children(): assert(not child.get_meta("damage_number",false))
 	print("PASS: critical and normal damage colors, float cleanup, automatic contact pickup")
 	quit()
