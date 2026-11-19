@@ -31,6 +31,14 @@ var scroll_dragged := false
 var swallow_scroll_release := false
 var menu_items: Dictionary = {}
 var settings_category := 0
+var news_tab := 0
+var news_selected := 0
+var shop_tab := 0
+var shop_category := 0
+var shop_selected := -1
+var ranking_tab := 0
+var ranking_filter := 0
+var shop_history: Array = []
 var hud_defaults: Dictionary = {}
 var editable_hud: Dictionary = {}
 var editor_panel: PanelContainer
@@ -438,7 +446,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.19  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.20  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -458,7 +466,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.19","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.20","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -1057,7 +1065,7 @@ func open_page(page:String):
 	if page in INVENTORY_PAGES:
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
-	if page=="Settings":
+	if page in ["Settings","News","Ranking","Shop"]:
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
 	panel.z_index=10
@@ -1127,12 +1135,10 @@ func open_page(page:String):
 			grid(row,48,8,game.items)
 			grid(row,30,5)
 			grid(row,30,5)
-		"Shop":
-			add_text(content,"General / Special / History  •  Preview")
-			grid(content,50,10)
+		"Shop": preload("res://service_pages.gd").new().shop(self,content)
 		"Market": add_text(content,"Buy / Sell / My Listings / History\nOnline market not connected (demo).")
 		"Quest": add_text(content,"Main quest: Defeat spirits\nEXP: %d / 100\nSide / Daily / Completed preview"%game.xp)
 		"Social": add_text(content,"Friends / Party / Guild\nOnline backend not connected.")
-		"Ranking": add_text(content,"Level / Power / PvP / Combat range / Weapon / Guild\nOffline preview")
-		"News": add_text(content,"News / Events / Updates\nv0.1: Offline village prototype")
+		"Ranking": preload("res://service_pages.gd").new().ranking(self,content)
+		"News": preload("res://service_pages.gd").new().news(self,content)
 		"Map": add_text(content,"Spirit Village • Safe Zone (26 × 26 m)\nFour gates lead to the hunting grounds.\nNormal → outer Elite → Boss\nPosition: %s"%str(game.player.position))

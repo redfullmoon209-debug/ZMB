@@ -72,6 +72,35 @@ func run():
 	root.push_input(touch,true)
 	hud.finish_editor(false)
 	assert(hud.joystick.position==original)
+	for category in range(3):
+		hud.news_tab=category
+		hud.open_page("News")
+		await process_frame
+		assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+	for category in range(6):
+		hud.ranking_tab=category
+		hud.open_page("Ranking")
+		await process_frame
+		assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+	for category in range(3):
+		hud.shop_tab=category
+		hud.open_page("Shop")
+		await process_frame
+		assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+		if category<2:
+			var grids: Array=hud.panel.find_children("*","GridContainer",true,false)
+			assert(grids.size()==1 and grids[0].columns==10 and grids[0].get_child_count()==50)
+	hud.shop_tab=0
+	hud.shop_selected=0
+	world.coins=20
+	hud.open_page("Shop")
+	await process_frame
+	for node in hud.panel.find_children("*","Button",true,false):
+		if node.text==hud.localized("ซื้อ (ทดสอบ)","Buy (demo)","购买（测试）"):
+			node.pressed.emit()
+			break
+	assert(world.coins==15 and hud.shop_history.size()==1 and world.items.size()==1)
+	print("PASS: news, ranking, 50-slot shops and local gold purchase")
 	print("PASS: seven categories, camera setting, HUD drag and cancel")
 	print("PASS: all ten right-to-left menu icons visible, selecting a category and dragging long menus works")
 	quit()
