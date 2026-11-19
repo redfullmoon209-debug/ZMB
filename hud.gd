@@ -16,6 +16,14 @@ const PLAYER_HUD = "res://assets/player_hud/"
 const Catalog = preload("res://item_catalog.gd")
 var item_dialog: AcceptDialog
 var damage_overlays: Dictionary = {}
+var cooldown_labels: Array[Label] = []
+
+func update_combat_cooldowns():
+	for i in range(cooldown_labels.size()):
+		var remaining: float=game.remaining_cooldown(i)
+		var l := cooldown_labels[i]
+		l.visible=remaining>0.05
+		l.text="%.1f"%remaining
 
 func add_damage_overlay(number: Label3D):
 	var value := Label.new()
@@ -418,7 +426,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.36"%game.coins
+	stats.text="Gold %d   v0.1.37"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -610,6 +618,18 @@ func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 		art.offset_bottom=-5
 		b.tooltip_text=t
 	b.pressed.connect(action)
+	if t=="ATTACK" or t.begins_with("SKILL "):
+		var timer := Label.new()
+		timer.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		timer.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		timer.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		timer.add_theme_font_size_override("font_size",24)
+		timer.add_theme_color_override("font_outline_color",Color("111318"))
+		timer.add_theme_constant_override("outline_size",7)
+		timer.hide()
+		b.add_child(timer)
+		timer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		cooldown_labels.append(timer)
 	touch_actions[b] = action
 	root.add_child(b)
 	buttons.append(b)
@@ -784,6 +804,7 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
+	update_combat_cooldowns()
 	update_damage_overlays()
 	if is_instance_valid(gm_button):
 		gm_button.visible=game.gm_allowed()
@@ -817,7 +838,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.36","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.37","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload

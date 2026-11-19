@@ -34,6 +34,7 @@ func run():
 	assert(arm.rotation.length()<0.01)
 	world.player.position=Vector3(0,0,-18)
 	enemy.position=Vector3(0,0,-27)
+	enemy.set_meta("home",enemy.position)
 	enemy.set_meta("hp",1000.0)
 	world.target=enemy
 	var before_chase: Vector3=world.player.position

@@ -72,6 +72,38 @@ var auto := false
 var run_mode := false
 var weapon := 0
 var cooldown := 0.0
+var skill_cooldowns: Array[float] = [0.0,0.0,0.0,0.0]
+const SKILL_COOLDOWNS = [0.45,3.0,5.0,7.0]
+
+func remaining_cooldown(skill: int) -> float:
+	return maxf(cooldown,skill_cooldowns[skill])
+
+func play_combat_effect(skill: int, victim: Node3D):
+	var fx := MeshInstance3D.new()
+	var material := StandardMaterial3D.new()
+	material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color=Color(0.95,0.72,0.34,0.85)
+	fx.material_override=material
+	fx.set_meta("combat_effect",skill)
+	add_child(fx)
+	var start := player.position+Vector3.UP*0.9
+	var end := victim.position+Vector3.UP*0.9
+	if skill==1:
+		var ring := TorusMesh.new()
+		ring.inner_radius=0.9;ring.outer_radius=1.15
+		fx.mesh=ring
+		fx.position=start
+	else:
+		var beam := BoxMesh.new()
+		beam.size=Vector3(0.18 if skill==2 else 0.42,0.12,maxf(0.3,start.distance_to(end)))
+		fx.mesh=beam
+		fx.position=(start+end)*0.5
+		if start.distance_to(end)>0.01:fx.look_at(end,Vector3.UP)
+	var fade := create_tween().set_parallel(true)
+	if skill==1: fade.tween_property(fx,"scale",Vector3(2.7,0.5,2.7),0.32)
+	fade.tween_property(material,"albedo_color:a",0.0,0.32)
+	fade.chain().tween_callback(fx.queue_free)
 var yaw := 0.0
 var pitch := deg_to_rad(28.0)
 var zoom := 10.0
@@ -575,7 +607,7 @@ func try_pending_attack():
 		cancel_attack()
 		return
 	var skill := pending_skill
-	if cooldown>0 or attack_locked() or dash_time>0 or player.position.distance_to(target.position)>attack_range(skill): return
+	if remaining_cooldown(skill)>0 or attack_locked() or dash_time>0 or player.position.distance_to(target.position)>attack_range(skill): return
 	if roundi(attack_power()+skill*7)<=0: cancel_attack();return
 	var ray := PhysicsRayQueryParameters3D.create(player.position+Vector3.UP, target.position+Vector3.UP)
 	ray.exclude=[player.get_rid()]
@@ -587,7 +619,9 @@ func try_pending_attack():
 		player_visual.rotation.y=atan2(direction.x,direction.z)
 	mp -= skill*5
 	cooldown = (0.45+skill*0.2)/gm_attack_multiplier
+	if skill>0: skill_cooldowns[skill]=SKILL_COOLDOWNS[skill]/gm_attack_multiplier
 	play_attack_pose(skill)
+	play_combat_effect(skill,target)
 	if is_demo_target(target):
 		var dummy := target
 		deal_damage(dummy,skill)
@@ -600,9 +634,13 @@ func try_pending_attack():
 					dummy.show())
 		return
 	var hits := [target]
-	if skill==3:
+	if skill==1 or skill==3:
 		for n in enemies:
-			if n!=target and combat_target_valid(n) and player.position.distance_to(n.position)<=attack_range(skill) and n.position.distance_to(target.position)<3: hits.append(n)
+			if n==target or not combat_target_valid(n): continue
+			var offset := n.position-player.position
+			if offset.length()>attack_range(skill): continue
+			var forward := direction.normalized()
+			if skill==1 or (offset.dot(forward)>0 and (offset-forward*offset.dot(forward)).length()<1.2): hits.append(n)
 	for n in hits:
 		deal_damage(n,skill)
 		if n.get_meta("hp")<=0:
@@ -684,6 +722,7 @@ func revive():
 	if attack_anim and attack_anim.is_valid(): attack_anim.kill()
 	player_visual.get_node("SwordArm").rotation=Vector3.ZERO
 	cooldown=0.0
+	skill_cooldowns=[0.0,0.0,0.0,0.0]
 	hp=max_hp()
 	mp=max_mp()
 	player.position=RESPAWN_POINT
@@ -775,6 +814,7 @@ func _physics_process(delta: float):
 		update_camera(delta)
 		return
 	cooldown=maxf(0,cooldown-delta)
+	for i in range(4): skill_cooldowns[i]=maxf(0,skill_cooldowns[i]-delta)
 	auto_potion_cooldown=maxf(0,auto_potion_cooldown-delta)
 	if not in_safe_zone() and auto_potion_cooldown<=0:
 		if auto_hp_threshold>0 and hp<=max_hp()*auto_hp_threshold/100.0:
@@ -851,14 +891,33 @@ func _physics_process(delta: float):
 		if is_safe_position(n.position, 0.6):
 			n.position=home
 			continue
-		if safe:
+		var tier: int=n.get_meta("tier",0)
+		var diff := player.position-n.position
+		var leash := 14.0+2.0*tier
+		var returning_home: bool=n.get_meta("returning_home",false)
+		if safe or gm_invisible or diff.length()>12.0+2.0*tier or n.position.distance_to(home)>leash: returning_home=true
+		if returning_home:
 			var returning := n.position.move_toward(home,delta*2.5)
 			if not is_safe_position(returning,0.6): n.position=returning
+			if n.position.distance_to(home)<0.1: returning_home=false
+			n.set_meta("returning_home",returning_home)
 			continue
-		var diff := player.position-n.position
-		if gm_invisible: continue
-		if diff.length()<10 and diff.length()>1.6:
-			var next := n.position+Vector3(diff.x,0,diff.z).normalized()*delta*1.5
+		var attack_wait := maxf(0,float(n.get_meta("attack_wait",0.0))-delta)
+		n.set_meta("attack_wait",attack_wait)
+		if diff.length()<10+2*tier and diff.length()>1.6:
+			n.rotation.y=atan2(diff.x,diff.z)
+			var next := n.position+Vector3(diff.x,0,diff.z).normalized()*delta*(1.5+0.35*tier)
 			if not is_safe_position(next,0.6): n.position=next
-		elif diff.length()<=1.6 and not gm_invincible: hp=maxf(0,hp-delta*maxf(0,4-defense_power()))
+		elif diff.length()<=1.6 and not gm_invincible and attack_wait<=0:
+			n.rotation.y=atan2(diff.x,diff.z)
+			var damage := maxf(0,5+3*tier-defense_power())
+			if damage>0:
+				hp=maxf(0,hp-damage)
+				show_damage_number(player.position+Vector3.UP*2.35,roundi(damage),false)
+				var arm := n.get_child(0).get_node_or_null("SwordArm") as Node3D
+				if is_instance_valid(arm):
+					var swing := arm.create_tween()
+					swing.tween_property(arm,"rotation:x",-1.7,0.12)
+					swing.tween_property(arm,"rotation:x",0.0,0.24)
+				n.set_meta("attack_wait",1.25)
 	update_camera(delta)
