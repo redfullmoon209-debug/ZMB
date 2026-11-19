@@ -39,12 +39,29 @@ func run():
 	var before_chase: Vector3=world.player.position
 	world.attack(0)
 	assert(world.pending_skill==0 and world.attack_pose_count==0 and enemy.get_meta("hp")==1000.0)
+	for i in range(5): await physics_frame
+	touch(0,joy,true)
+	for i in range(3): await physics_frame
+	assert(world.pending_skill==-1 and world.attack_pose_count==0 and enemy.get_meta("hp")==1000.0)
+	touch(0,joy,false)
+	world.attack(0)
 	for i in range(180):
 		await physics_frame
 		if world.attack_pose_count>0: break
 	assert(world.attack_pose_count==1 and enemy.get_meta("hp")==985.0)
 	assert(world.player.position.distance_to(before_chase)>1.0)
 	assert(world.pending_skill==-1)
+	# Held joystick and a jump request cannot move during a confirmed strike.
+	touch(0,joy,true)
+	world.jump_requested=true
+	for i in range(3): await physics_frame
+	assert(world.attack_locked() and Vector2(world.player.velocity.x,world.player.velocity.z).length()<0.01 and world.player.velocity.y<=0)
+	touch(0,joy,false)
+	world.request_dash()
+	for i in range(2): await physics_frame
+	assert(world.attack_locked() and Vector2(world.player.velocity.x,world.player.velocity.z).length()>10)
+	await create_timer(0.5).timeout
+	assert(not world.attack_locked())
 	world.player.position=Vector3(0,0,-18)
 	enemy.position=Vector3(0,0,-20)
 	world.target=enemy
@@ -63,6 +80,7 @@ func run():
 		assert(world.cooldown>0)
 		await create_timer(0.12).timeout
 		assert(arm.rotation.length()>0.1)
+		await create_timer(0.32).timeout
 	print("PASS: safe zone has no attack pose, automatic approach, all four buttons only animate on real damage")
 	world.critical_chance=1.0
 	world.cooldown=0

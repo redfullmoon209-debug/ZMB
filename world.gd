@@ -99,6 +99,20 @@ var attack_anim: Tween
 var attack_pose_count := 0
 var pending_skill := -1
 var pending_target: Node3D
+
+func attack_locked() -> bool:
+	return attack_anim != null and attack_anim.is_valid() and attack_anim.is_running()
+
+func request_dash():
+	if not started or hp<=0: return
+	cancel_attack()
+	auto=false
+	dash_time=0.18
+
+func toggle_run():
+	run_mode=not run_mode
+	cancel_attack()
+	auto=false
 var critical_chance := 0.10
 const CRITICAL_MULTIPLIER := 1.5
 var session_started_msec := -1
@@ -561,7 +575,7 @@ func try_pending_attack():
 		cancel_attack()
 		return
 	var skill := pending_skill
-	if cooldown>0 or player.position.distance_to(target.position)>attack_range(skill): return
+	if cooldown>0 or attack_locked() or dash_time>0 or player.position.distance_to(target.position)>attack_range(skill): return
 	if roundi(attack_power()+skill*7)<=0: cancel_attack();return
 	var ray := PhysicsRayQueryParameters3D.create(player.position+Vector3.UP, target.position+Vector3.UP)
 	ray.exclude=[player.get_rid()]
@@ -741,7 +755,7 @@ func _unhandled_input(event):
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_SPACE: jump_requested=true
-			KEY_SHIFT: dash_time=0.18
+			KEY_SHIFT: request_dash()
 			KEY_F: attack(0)
 			KEY_1: attack(1)
 			KEY_2: attack(2)
@@ -775,6 +789,9 @@ func _physics_process(delta: float):
 	input.x += float(Input.is_physical_key_pressed(KEY_D))-float(Input.is_physical_key_pressed(KEY_A))
 	input.y += float(Input.is_physical_key_pressed(KEY_S))-float(Input.is_physical_key_pressed(KEY_W))
 	var move := movement_vector(input)
+	if move.length()>0.02:
+		cancel_attack()
+		auto=false
 	if is_instance_valid(follow_player):
 		if move.length()>0.02 or auto or follow_player!=target or follow_player.get_meta("hp",0)<=0 or is_safe_position(follow_player.position)!=in_safe_zone():
 			follow_player=null
@@ -803,6 +820,13 @@ func _physics_process(delta: float):
 				if is_safe_position(player.position+move*0.35): cancel_attack();move=Vector3.ZERO
 				else: chasing=true
 			else: move=Vector3.ZERO
+	# A confirmed strike owns movement until its animation ends. Dash alone
+	# overrides the lock, without replaying or duplicating the hit.
+	if attack_locked():
+		jump_requested=false
+		if dash_time<=0: move=Vector3.ZERO
+	if dash_time>0 and move.length()<=0.02:
+		move=Vector3(sin(player_visual.rotation.y),0,cos(player_visual.rotation.y))
 	var speed := (8.0 if run_mode else 4.5)*gm_move_multiplier
 	if chasing: speed=8.0*gm_move_multiplier
 	if dash_time>0: speed=18
