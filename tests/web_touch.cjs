@@ -16,13 +16,13 @@ const server = http.createServer((req, res) => {
 
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  const browser = await chromium.launch({headless:true,executablePath:process.env.ZMB_BROWSER_PATH || undefined,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
   try {
     const page = await browser.newPage({viewport:{width:932,height:430},deviceScaleFactor:2,isMobile:true,hasTouch:true});
     page.on('console', msg => { if (msg.type() === 'error') console.log('BROWSER:',msg.text()); });
     page.on('pageerror', err => console.log('BROWSER ERROR:',err.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/?zmbtest=1`);
-    await page.waitForFunction(() => window.zmbDiagnostics?.version === '0.1.3' && window.zmbDiagnostics.controls.START, {timeout:60000});
+    await page.waitForFunction(() => window.zmbDiagnostics?.version === '0.1.3' && window.zmbDiagnostics.controls.START, null, {timeout:60000});
     const diag = () => page.evaluate(() => window.zmbDiagnostics);
     const initial = await diag();
     assert.equal(initial.ready,true,'Web touch queue failed to initialize');
@@ -42,7 +42,7 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => window.zmbDiagnostics.stick[1] < -0.5 && window.zmbDiagnostics.velocity[2] < -1);
     console.log('Joystick moving:',await diag());
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[joy,jump]});
-    await page.waitForFunction(() => {const d=window.zmbDiagnostics;return d.touches===2&&d.stick[1]<-0.5&&d.position[1]>0.1&&d.velocity[2]<-1;}, {timeout:5000});
+    await page.waitForFunction(() => {const d=window.zmbDiagnostics;return d.touches===2&&d.stick[1]<-0.5&&d.position[1]>0.1&&d.velocity[2]<-1;}, null, {timeout:5000});
     console.log('PASS: actual Godot Web build moves and jumps with two simultaneous browser touches');
     await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     await page.waitForFunction(() => window.zmbDiagnostics.stick[0]===0&&window.zmbDiagnostics.stick[1]===0);
