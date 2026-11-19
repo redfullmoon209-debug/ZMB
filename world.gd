@@ -27,6 +27,8 @@ const BAG_UNLOCK_LEVELS := [0,10,20,30,40,50]
 const BAG_UNLOCK_HOURS := [0,1,3,6,12,24]
 const BAG_UNLOCK_PRICE := 500
 var bag_unlocked_pages := 1
+var storage_unlocked_pages := 1
+var storage_items: Array[String] = []
 
 func bag_capacity() -> int:
 	while bag_unlocked_pages<BAG_MAX_PAGES:
@@ -40,6 +42,32 @@ func buy_bag_unlock() -> bool:
 	if bag_unlocked_pages>=BAG_MAX_PAGES or coins<BAG_UNLOCK_PRICE: return false
 	coins-=BAG_UNLOCK_PRICE
 	bag_unlocked_pages+=1
+	save_profile()
+	return true
+
+func storage_capacity() -> int:
+	while storage_unlocked_pages<BAG_MAX_PAGES:
+		var next:=storage_unlocked_pages
+		if level<BAG_UNLOCK_LEVELS[next] and total_play_seconds()<BAG_UNLOCK_HOURS[next]*3600: break
+		storage_unlocked_pages+=1
+	return storage_unlocked_pages*BAG_PAGE_SIZE
+
+func buy_storage_unlock() -> bool:
+	storage_capacity()
+	if storage_unlocked_pages>=BAG_MAX_PAGES or coins<BAG_UNLOCK_PRICE: return false
+	coins-=BAG_UNLOCK_PRICE
+	storage_unlocked_pages+=1
+	save_profile()
+	return true
+
+func transfer_storage(index: int, deposit: bool) -> bool:
+	var source: Array[String]=items if deposit else storage_items
+	var destination: Array[String]=storage_items if deposit else items
+	var capacity:=storage_capacity() if deposit else bag_capacity()
+	if index<0 or index>=source.size() or destination.size()>=capacity: return false
+	destination.append(source[index])
+	source.remove_at(index)
+	ui.trade_selected.clear(); ui.market_selected=-1
 	save_profile()
 	return true
 
@@ -76,17 +104,22 @@ func unequip_item(slot: String) -> bool:
 func save_profile():
 	if profile_path.is_empty() or not started: return
 	bag_capacity()
+	storage_capacity()
 	var cfg := ConfigFile.new()
-	for key in ["items","equipment","coins","xp","level","monsters_defeated","shards_collected","quest_claimed","bag_unlocked_pages"]:
+	for key in ["items","equipment","coins","xp","level","monsters_defeated","shards_collected","quest_claimed","bag_unlocked_pages","storage_items","storage_unlocked_pages"]:
 		cfg.set_value("character",key,get(key))
 	cfg.save(profile_path)
 
 func load_profile(path: String):
 	profile_path=path
 	bag_unlocked_pages=1
+	storage_unlocked_pages=1
+	storage_items.clear()
 	var cfg := ConfigFile.new()
 	if cfg.load(path)!=OK: return
 	items.assign(cfg.get_value("character","items",[]))
+	storage_items.assign(cfg.get_value("character","storage_items",[]))
+	storage_unlocked_pages=clampi(maxi(int(cfg.get_value("character","storage_unlocked_pages",1)),ceili(storage_items.size()/50.0)),1,BAG_MAX_PAGES)
 	bag_unlocked_pages=clampi(maxi(int(cfg.get_value("character","bag_unlocked_pages",1)),ceili(items.size()/50.0)),1,BAG_MAX_PAGES)
 	equipment=cfg.get_value("character","equipment",{})
 	for key in ["coins","xp","level","monsters_defeated","shards_collected","quest_claimed"]:

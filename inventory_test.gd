@@ -79,6 +79,29 @@ func run():
 	world.coins=world.BAG_UNLOCK_PRICE
 	assert(world.buy_bag_unlock() and world.bag_capacity()==200 and world.coins==0)
 	assert(not world.buy_bag_unlock())
+	world.level=1
+	world.previous_play_seconds=0
+	world.storage_unlocked_pages=1
+	assert(world.storage_capacity()==50)
+	hud.storage_page=1
+	hud.bag_page=0
+	hud.open_page("Storage")
+	await process_frame
+	await process_frame
+	var storage_row: HBoxContainer=hud.modal_scroll.get_child(0).get_child(0)
+	assert(storage_row.get_child(0).get_child(1).get_child_count()==50)
+	assert(storage_row.get_child(0).get_child(1).get_child(0).disabled)
+	assert(not storage_row.get_child(2).get_child(1).get_child(0).disabled)
+	world.level=10
+	assert(world.storage_capacity()==100)
+	world.previous_play_seconds=3*3600
+	assert(world.storage_capacity()==150)
+	world.coins=world.BAG_UNLOCK_PRICE
+	assert(world.buy_storage_unlock() and world.storage_capacity()==200)
+	world.items.assign(["HP Potion"])
+	assert(world.transfer_storage(0,true) and world.items.is_empty())
+	assert(world.transfer_storage(0,false) and world.storage_items.is_empty())
+	assert(world.transfer_storage(0,true))
 	world.items.assign([])
 	for i in range(51): world.items.append("HP Potion")
 	world.items[50]="Rare Sword"
@@ -99,6 +122,7 @@ func run():
 	world.bag_unlocked_pages=1
 	world.load_profile(path)
 	assert(world.bag_capacity()==200)
+	assert(world.storage_capacity()==200 and world.storage_items==["HP Potion"])
 	world.level=50
 	assert(world.bag_capacity()==300)
 	assert(not world.buy_bag_unlock())
