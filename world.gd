@@ -45,6 +45,8 @@ var started := false
 var male := true
 var character_name := "Warrior"
 var player_visual: Node3D
+var attack_anim: Tween
+var attack_pose_count := 0
 var session_started_msec := -1
 var previous_play_seconds := 0
 var first_play_unix := 0
@@ -332,8 +334,14 @@ func figure(parent: Node3D,color: Color) -> Node3D:
 	box(Vector3(0,1.67,0),Vector3(0.42,0.42,0.42),Color("c5ad91"),n)
 	for side in [-1,1]:
 		box(Vector3(float(side)*0.19,0.35,0),Vector3(0.24,0.7,0.26),Color("27292e"),n)
-		box(Vector3(float(side)*0.46,1.05,0),Vector3(0.2,0.65,0.24),color,n)
-	box(Vector3(0.55,0.85,0.1),Vector3(0.12,0.95,0.12),Color("aebac3"),n)
+		if side<0:
+			box(Vector3(-0.46,1.05,0),Vector3(0.2,0.65,0.24),color,n)
+	var arm := Node3D.new()
+	arm.name="SwordArm"
+	n.add_child(arm)
+	arm.position=Vector3(0.46,1.35,0)
+	box(Vector3(0,-0.30,0),Vector3(0.2,0.65,0.24),color,arm)
+	box(Vector3(0.09,-0.50,0.1),Vector3(0.12,0.95,0.12),Color("aebac3"),arm)
 	return n
 
 func spawn_enemy(i: int, forced_tier: int=-1):
@@ -430,17 +438,35 @@ func select_target_at(pos: Vector2):
 	if is_demo_target(target): auto=false
 	if follow_player!=target: follow_player=null
 
+func play_attack_pose(skill: int):
+	var arm := player_visual.get_node("SwordArm") as Node3D
+	if attack_anim and attack_anim.is_valid(): attack_anim.kill()
+	attack_pose_count+=1
+	arm.rotation=Vector3.ZERO
+	var windup: Vector3 = [Vector3(-0.95,0,-0.8),Vector3(-1.3,-1.2,-0.4),Vector3(-0.5,0,-0.5),Vector3(-2.5,0,0)][skill]
+	var strike: Vector3 = [Vector3(-1.8,0.8,0.55),Vector3(-1.45,2.7,0.5),Vector3(-1.55,0,0),Vector3(-0.65,0,0)][skill]
+	attack_anim=create_tween().set_trans(Tween.TRANS_SINE)
+	attack_anim.tween_property(arm,"rotation",windup,0.10/gm_attack_multiplier)
+	attack_anim.tween_property(arm,"rotation",strike,0.14/gm_attack_multiplier)
+	attack_anim.tween_property(arm,"rotation",Vector3.ZERO,0.18/gm_attack_multiplier)
+
 func attack(skill: int):
-	if not started or hp<=0 or cooldown>0 or in_safe_zone():
+	if not started or hp<=0 or cooldown>0 or skill<0 or skill>3:
 		return
+	if mp < skill*5: return
+	# Preview the swing even without an enemy; safe zones never take damage.
+	cooldown = (0.45+skill*0.2)/gm_attack_multiplier
+	play_attack_pose(skill)
+	if in_safe_zone(): return
 	if not is_instance_valid(target): choose_target()
 	if not is_instance_valid(target): return
-	if is_demo_target(target) and is_safe_position(target.position): return
+	if is_safe_position(target.position): return
 	var ranges := [2.7,5.5,12.0]
 	if player.position.distance_to(target.position)>ranges[weapon]+skill: return
-	if mp < skill*5: return
+	var direction := target.position-player.position
+	if Vector2(direction.x,direction.z).length()>0.01:
+		player_visual.rotation.y=atan2(direction.x,direction.z)
 	mp -= skill*5
-	cooldown = (0.45+skill*0.2)/gm_attack_multiplier
 	if is_demo_target(target):
 		var dummy := target
 		dummy.set_meta("hp",maxf(0,float(dummy.get_meta("hp"))-gm_attack_power-skill*7))
@@ -455,7 +481,7 @@ func attack(skill: int):
 	var hits := [target]
 	if skill==3:
 		for n in enemies:
-			if n!=target and n.position.distance_to(target.position)<3: hits.append(n)
+			if n!=target and not is_safe_position(n.position) and n.position.distance_to(target.position)<3: hits.append(n)
 	for n in hits:
 		n.set_meta("hp",float(n.get_meta("hp"))-gm_attack_power-skill*7)
 		if n.get_meta("hp")<=0:
@@ -527,6 +553,9 @@ func claim_quest(id: String) -> bool:
 	return true
 
 func revive():
+	if attack_anim and attack_anim.is_valid(): attack_anim.kill()
+	player_visual.get_node("SwordArm").rotation=Vector3.ZERO
+	cooldown=0.0
 	hp=100
 	mp=100
 	player.position=RESPAWN_POINT
