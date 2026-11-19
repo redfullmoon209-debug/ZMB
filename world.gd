@@ -170,6 +170,8 @@ var stick_deadzone := 0.06
 var auto_hp_threshold := 0
 var auto_mp_threshold := 0
 var auto_loot := true
+var auto_skills: Array[bool] = [true,true,true]
+var auto_skill_cursor := 0
 var auto_potion_cooldown := 0.0
 var nearest_target_only := false
 var sun_light: DirectionalLight3D
@@ -643,6 +645,14 @@ func combat_target_valid(victim: Node3D) -> bool:
 func attack_range(skill: int) -> float:
 	return [2.7,5.5,12.0][weapon]+skill
 
+func choose_auto_skill() -> int:
+	for i in range(3):
+		var index := (auto_skill_cursor+i)%3
+		var skill := index+1
+		if auto_skills[index] and skill_cooldowns[skill]<=0 and mp>=skill*5:
+			return skill
+	return 0
+
 func cancel_attack():
 	pending_skill=-1
 	pending_target=null
@@ -903,7 +913,10 @@ func _physics_process(delta: float):
 		mp=minf(max_mp(),mp+delta*4.0)
 	if auto and pending_skill<0:
 		if is_demo_target(target): target=null
-		attack(0)
+		if cooldown<=0 and not attack_locked() and dash_time<=0:
+			var skill:=choose_auto_skill()
+			attack(skill)
+			if skill>0: auto_skill_cursor=skill%3
 		if auto_loot: collect()
 	var chasing := false
 	if pending_skill>=0:

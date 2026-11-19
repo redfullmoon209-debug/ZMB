@@ -67,6 +67,29 @@ func run():
 	hud.save_setting("camera_sensitivity",150)
 	assert(is_equal_approx(world.camera_sensitivity,1.5))
 	hud.save_setting("camera_sensitivity",100)
+	hud.settings_category=4
+	hud.open_page("Settings")
+	await process_frame
+	var all_skills: CheckButton
+	var skill_checks: Array[CheckButton]=[]
+	for node in hud.panel.find_children("*","CheckButton",true,false):
+		if node.text==hud.localized("ใช้สกิลทั้งหมด","Use all skills","使用全部技能"): all_skills=node
+		if node.has_meta("auto_skill"): skill_checks.append(node)
+	assert(is_instance_valid(all_skills) and skill_checks.size()==3)
+	all_skills.button_pressed=true
+	all_skills.button_pressed=false
+	assert(world.choose_auto_skill()==0)
+	skill_checks[1].button_pressed=true
+	assert(world.choose_auto_skill()==2 and not all_skills.button_pressed)
+	world.skill_cooldowns[2]=1.0
+	assert(world.choose_auto_skill()==0)
+	world.skill_cooldowns[2]=0.0
+	world.mp=0
+	assert(world.choose_auto_skill()==0)
+	world.mp=100
+	all_skills.button_pressed=true
+	assert(not world.auto_skills.has(false))
+	print("PASS: Auto Hunt skill selection, master toggle, cooldown and mana fallback")
 	hud.start_editor()
 	await process_frame
 	var original: Vector2=hud.joystick.position

@@ -444,7 +444,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.48"%game.coins
+	stats.text="Gold %d   v0.1.49"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -873,7 +873,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.48","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.49","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -1347,6 +1347,7 @@ func apply_settings():
 	game.auto_hp_threshold=int(config.get_value("settings","auto_hp",0))
 	game.auto_mp_threshold=int(config.get_value("settings","auto_mp",0))
 	game.auto_loot=bool(config.get_value("settings","auto_loot",true))
+	for i in range(3): game.auto_skills[i]=bool(config.get_value("settings","auto_skill_%d"%(i+1),true))
 	game.nearest_target_only=bool(config.get_value("settings","nearest",false))
 	for bus in ["Music","Combat","System"]:
 		if AudioServer.get_bus_index(bus)<0:
@@ -1385,6 +1386,36 @@ func setting_toggle(parent: Node, title: String, key: String, initial: bool):
 	check.custom_minimum_size.y=46
 	parent.add_child(check)
 	check.toggled.connect(func(v):save_setting(key,v))
+
+func build_auto_skills(parent: Node):
+	var all := CheckButton.new()
+	all.text=localized("ใช้สกิลทั้งหมด","Use all skills","使用全部技能")
+	all.custom_minimum_size.y=46
+	all.button_pressed=not game.auto_skills.has(false)
+	parent.add_child(all)
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var checks: Array[CheckButton]=[]
+	for i in range(3):
+		var check := CheckButton.new()
+		check.text=localized("สกิล %d","Skill %d","技能 %d")%(i+1)
+		check.custom_minimum_size.y=46
+		check.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		check.button_pressed=game.auto_skills[i]
+		check.set_meta("auto_skill",i+1)
+		row.add_child(check)
+		checks.append(check)
+		check.toggled.connect(func(v):
+			save_setting("auto_skill_%d"%(i+1),v)
+			all.set_pressed_no_signal(not game.auto_skills.has(false))
+			if not v and game.auto and game.pending_skill==i+1: game.cancel_attack())
+	all.toggled.connect(func(v):
+		for i in range(3):
+			checks[i].set_pressed_no_signal(v)
+			config.set_value("settings","auto_skill_%d"%(i+1),v)
+		config.save("user://zmb.cfg")
+		apply_settings()
+		if not v and game.auto and game.pending_skill>0: game.cancel_attack())
 
 func setting_choice(parent: Node,title: String,key: String,labels: Array,values: Array,initial):
 	add_text(parent,title)
@@ -1463,6 +1494,7 @@ func build_settings(parent: VBoxContainer):
 			content.add_child(auto_check)
 			setting_toggle(content,localized("เก็บของอัตโนมัติขณะ Auto Hunt","Auto loot while hunting","自动拾取"),"auto_loot",true)
 			setting_toggle(content,localized("เลือกเป้าหมายใกล้สุดเสมอ","Always select nearest target","优先最近目标"),"nearest",false)
+			build_auto_skills(content)
 			setting_slider(content,localized("ใช้ยา HP (%), 0 = ปิด","Auto HP (%), 0 = off","自动生命药 (%)"),"auto_hp",0,100,0)
 			setting_slider(content,localized("ใช้ยา MP (%), 0 = ปิด","Auto MP (%), 0 = off","自动法力药 (%)"),"auto_mp",0,100,0)
 		5:
