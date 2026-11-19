@@ -29,13 +29,17 @@ var scroll_dragged := false
 var swallow_scroll_release := false
 var menu_items: Dictionary = {}
 const UHD = "res://assets/uhd/"
+const INVENTORY_PAGES = ["Bag","Character","Storage","Skills"]
 var meter_fills: Array[TextureProgressBar] = []
 const MENU_PAGES = ["Bag","Quest","Social","Trade","Market","Shop","Ranking","News","Map","Settings"]
 var config := ConfigFile.new()
-var names := {"Bag":["กระเป๋า","Bag","背包"],"Storage":["คลัง","Storage","仓库"],"Character":["ตัวละคร","Character","角色"],"Skills":["สกิล","Skills","技能"],"Market":["ตลาดโลก","Market","市场"],"Shop":["ร้านค้า","Shop","商店"],"Quest":["เควส","Quest","任务"],"Social":["สังคม","Social","社交"],"Ranking":["อันดับ","Ranking","排行"],"News":["ประกาศ","News","公告"],"Settings":["ตั้งค่า","Settings","设置"],"Trade":["แลกเปลี่ยน","Trade","交易"],"Map":["แผนที่","Map","地图"]}
+var names := {"Bag":["กระเป๋า","Bag","背包"],"Storage":["คลัง","Storage","仓库"],"Character":["ข้อมูลตัวละคร","Character","角色信息"],"Skills":["สกิล","Skills","技能"],"Market":["ตลาดโลก","Market","市场"],"Shop":["ร้านค้า","Shop","商店"],"Quest":["เควส","Quest","任务"],"Social":["สังคม","Social","社交"],"Ranking":["อันดับ","Ranking","排行"],"News":["ประกาศ","News","公告"],"Settings":["ตั้งค่า","Settings","设置"],"Trade":["แลกเปลี่ยน","Trade","交易"],"Map":["แผนที่","Map","地图"]}
 
 func trn(s: String) -> String:
 	return names[s][lang] if names.has(s) else s
+
+func localized(th: String, en: String, zh: String) -> String:
+	return [th,en,zh][lang]
 
 func _ready():
 	config.load("user://zmb.cfg")
@@ -60,6 +64,9 @@ func _ready():
 	popup.border_color=Color("a64a4e")
 	theme.set_stylebox("panel","PanelContainer",popup)
 	theme.default_font_size=18
+	var ui_font := preload("res://assets/fonts/NotoSansThai-Regular.ttf")
+	ui_font.fallbacks = [preload("res://assets/fonts/ZMB-Chinese.otf"),ThemeDB.fallback_font]
+	theme.default_font=ui_font
 	root.theme=theme
 	stats=label("",Vector2(22,18),Vector2(320,100))
 	# Decorative meters do not participate in touch routing.
@@ -287,7 +294,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.7  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.8  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -307,7 +314,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.7","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.8","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -334,6 +341,142 @@ func add_text(parent:Node,t:String):
 	var l := Label.new()
 	l.text=t
 	parent.add_child(l)
+
+func language_menu(parent: Node, page: String):
+	var button := MenuButton.new()
+	button.text=localized("ภาษา","Language","语言")+" ▾"
+	button.custom_minimum_size=Vector2(120,44)
+	parent.add_child(button)
+	var popup := button.get_popup()
+	popup.theme=root.theme
+	for i in range(3):
+		popup.add_radio_check_item(["ไทย","English","简体中文"][i],i)
+		popup.set_item_checked(i,i==lang)
+	popup.id_pressed.connect(func(id):
+		lang=id
+		config.set_value("ui","lang",lang)
+		config.save("user://zmb.cfg")
+		open_page(page))
+
+func inventory_slot(parent: Node, caption: String, slot_size: Vector2, filled := false) -> Button:
+	var b := Button.new()
+	b.text=caption
+	b.tooltip_text=caption if not caption.is_empty() else localized("ว่าง","Empty","空")
+	b.custom_minimum_size=slot_size
+	b.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	b.add_theme_font_size_override("font_size",13)
+	var style := StyleBoxTexture.new()
+	style.texture=preload("res://assets/uhd/slot.png")
+	for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]: style.set_content_margin(side,2)
+	b.add_theme_stylebox_override("normal",style)
+	var hover := style.duplicate() as StyleBoxTexture
+	hover.modulate_color=Color("ffb3b3")
+	b.add_theme_stylebox_override("hover",hover)
+	b.add_theme_stylebox_override("pressed",hover)
+	if filled: b.modulate=Color("ffe4b4")
+	parent.add_child(b)
+	return b
+
+func inventory_grid(parent: Node, count: int, columns: int, contents: Array=[]):
+	var g := GridContainer.new()
+	g.columns=columns
+	g.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	g.add_theme_constant_override("h_separation",5)
+	g.add_theme_constant_override("v_separation",5)
+	parent.add_child(g)
+	for i in range(count):
+		var filled := i<contents.size()
+		var b := inventory_slot(g,"◆" if filled else "",Vector2(56,56),filled)
+		if filled: b.tooltip_text=str(contents[i])
+	return g
+
+func character_preview(parent: Node):
+	var vc := SubViewportContainer.new()
+	vc.custom_minimum_size=Vector2(185,300)
+	vc.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	vc.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	vc.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	vc.stretch=true
+	parent.add_child(vc)
+	var vp := SubViewport.new()
+	vp.own_world_3d=true
+	vp.transparent_bg=true
+	vp.render_target_update_mode=SubViewport.UPDATE_ALWAYS
+	vc.add_child(vp)
+	var model: Node3D=game.player_visual.duplicate()
+	model.position=Vector3.ZERO
+	model.rotation=Vector3(0,PI,0)
+	vp.add_child(model)
+	var cam := Camera3D.new()
+	cam.projection=Camera3D.PROJECTION_ORTHOGONAL
+	cam.size=2.6
+	cam.position=Vector3(0,1.1,4)
+	vp.add_child(cam)
+	cam.look_at(Vector3(0,1.0,0))
+	cam.current=true
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees=Vector3(-35,25,0)
+	light.light_energy=1.6
+	vp.add_child(light)
+	var env := WorldEnvironment.new()
+	env.environment=Environment.new()
+	env.environment.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR
+	env.environment.ambient_light_color=Color.WHITE
+	env.environment.ambient_light_energy=0.65
+	vp.add_child(env)
+
+func equipment_preview(parent: Node):
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",8)
+	parent.add_child(row)
+	var left := VBoxContainer.new()
+	row.add_child(left)
+	for title in [localized("ศีรษะ","Head","头部"),localized("เสื้อ","Armor","护甲"),localized("ถุงมือ","Gloves","手套"),localized("กางเกง","Legs","裤子"),localized("รองเท้า","Boots","鞋子")]:
+		inventory_slot(left,title,Vector2(86,57))
+	character_preview(row)
+	var right := VBoxContainer.new()
+	row.add_child(right)
+	for title in [localized("อาวุธหลัก","Main weapon","主武器"),localized("อาวุธรอง","Off hand","副武器"),localized("สัตว์เก็บของ","Loot pet","拾取宠物")]:
+		inventory_slot(right,title,Vector2(86,70))
+	var accessories := HBoxContainer.new()
+	parent.add_child(accessories)
+	for title in [localized("กำไล","Bracelet","手镯"),localized("แหวน","Ring","戒指"),localized("สร้อย","Necklace","项链"),localized("แหวน","Ring","戒指"),localized("กำไล","Bracelet","手镯")]:
+		inventory_slot(accessories,title,Vector2(60,45))
+
+func build_inventory_page(content: Node, page: String):
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",20)
+	content.add_child(row)
+	var left := VBoxContainer.new()
+	var right := VBoxContainer.new()
+	for column in [left,right]:
+		column.custom_minimum_size.x=530
+		column.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		column.add_theme_constant_override("separation",8)
+	row.add_child(left)
+	row.add_child(VSeparator.new())
+	row.add_child(right)
+	match page:
+		"Bag":
+			add_text(left,localized("อุปกรณ์สวมใส่","Equipment","装备"))
+			equipment_preview(left)
+			add_text(right,localized("กระเป๋า","Inventory","背包")+"  %d / 48"%game.items.size())
+			inventory_grid(right,48,8,game.items)
+			add_text(right,localized("เงิน","Gold","金币")+"  %d"%game.coins)
+		"Storage":
+			add_text(left,localized("คลัง (ตัวอย่าง)","Storage (preview)","仓库（预览）"))
+			inventory_grid(left,48,8)
+			add_text(right,localized("กระเป๋า","Inventory","背包"))
+			inventory_grid(right,48,8,game.items)
+		"Character":
+			character_preview(left)
+			add_text(right,localized("ข้อมูลตัวละคร","Character information","角色信息"))
+			add_text(right,localized("เลเวล","Level","等级")+" %d\nHP %d / MP %d\nEXP %d / 100\n"%[game.level,game.hp,game.mp,game.xp]+localized("เงิน","Gold","金币")+" %d"%game.coins)
+		"Skills":
+			character_preview(left)
+			add_text(right,localized("สกิลอาวุธ","Weapon skills","武器技能"))
+			for i in range(3): add_button(right,[localized("ดาบ / ระยะใกล้","Sword / melee","剑 / 近战"),localized("ทวน / ระยะกลาง","Spear / mid","枪 / 中距离"),localized("ปืน / ระยะไกล","Gun / ranged","火枪 / 远程")][i],func():game.weapon=i)
+			inventory_grid(right,15,5,["Strike","Spirit thrust","Sweep"])
 
 func grid(parent:Node,count:int,columns:int,contents:Array=[]):
 	var g := GridContainer.new()
@@ -400,6 +543,9 @@ func open_page(page:String):
 		return
 	panel.position=Vector2(175,100)
 	panel.size=Vector2(930,520)
+	if page in INVENTORY_PAGES:
+		panel.position=Vector2(60,40)
+		panel.size=Vector2(1160,640)
 	panel.z_index=10
 	var popup_style := StyleBoxTexture.new()
 	popup_style.texture=preload("res://assets/uhd/popup.png")
@@ -417,8 +563,12 @@ func open_page(page:String):
 	title.text="ZMB  /  "+trn(page)
 	title.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	header.add_child(title)
-	for i in range(3):
-		add_button(header,["ไทย","EN","中文"][i],func(): lang=i; config.set_value("ui","lang",lang); config.save("user://zmb.cfg"); open_page(page))
+	if page in INVENTORY_PAGES:
+		for key in INVENTORY_PAGES:
+			var tab: Button=add_button(header,trn(key),func():open_page(key))
+			tab.custom_minimum_size=Vector2(110,44)
+			if key==page: tab.add_theme_color_override("font_color",Color("ff9c8e"))
+	language_menu(header,page)
 	if page not in ["Start","Revive"]: close_button=add_button(header,"✕",close_page)
 	var scroll := ScrollContainer.new()
 	modal_scroll=scroll
@@ -434,32 +584,7 @@ func open_page(page:String):
 			start_button=add_button(content,"Male warrior",func():game.begin(true);close_page())
 			add_button(content,"Female warrior",func():game.begin(false);close_page())
 		"Bag","Storage","Character","Skills":
-			var tabs := HBoxContainer.new()
-			content.add_child(tabs)
-			for k in ["Bag","Storage","Character","Skills"]: add_button(tabs,trn(k),func():open_page(k))
-			var row := HBoxContainer.new()
-			content.add_child(row)
-			var left := VBoxContainer.new()
-			row.add_child(left)
-			left.custom_minimum_size.x=390
-			var right := VBoxContainer.new()
-			row.add_child(right)
-			match page:
-				"Bag":
-					add_text(left,"Equipment • 13 slots")
-					grid(left,13,4)
-					grid(right,48,8,game.items)
-				"Storage":
-					add_text(left,"Storage preview")
-					grid(left,48,8)
-					grid(right,48,8,game.items)
-				"Character":
-					add_text(left,"Warrior • model placeholder")
-					add_text(right,"Level %d\nHP %d / MP %d\nGold %d"%[game.level,game.hp,game.mp,game.coins])
-				"Skills":
-					add_text(left,"Weapon selection • local combat")
-					for i in range(3): add_button(left,["Sword / melee","Spear / mid","Gun / ranged"][i],func(): game.weapon=i)
-					grid(right,15,5,["Strike","Spirit thrust","Sweep"])
+			build_inventory_page(content,page)
 		"Settings":
 			add_text(content,"HUD Editor • position / size / opacity")
 			for b in buttons:

@@ -1,5 +1,9 @@
 # ZMB v0.1 — Offline prototype
 
+## v0.1.8 — Inventory layout and language picker
+
+Bag, Character, Storage and Skills share a wider modal with top navigation and a three-language dropdown. Bag splits equipment and the current 3D player preview from the 48-slot inventory; accessories are smaller and the loot-pet slot is included. Storage and equipment remain preview-only pending their gameplay backend. Bundled Thai and simplified Chinese UI fonts prevent missing glyphs. The existing player model, world and control routing are unchanged.
+
 ## v0.1.7 — UHD UI asset integration
 
 Original transparent PNGs recovered from the approved UI designs are stored in `assets/uhd/` (13 files). The shared popup, item grids, market/trade menu icons and live HP/MP/EXP meters use these assets. Portrait, nameplate and level badge artwork is available for the next HUD layout pass. Existing controls, touch capture, camera, safe zone and demo gameplay are unchanged. Missing artwork retains the prior UI until its individual PNG is available.
