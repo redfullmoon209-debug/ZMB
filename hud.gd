@@ -13,6 +13,10 @@ var status_portrait_view: SubViewport
 var status_portrait_male := true
 const PLAYER_HUD = "res://assets/player_hud/"
 var target_label: Label
+var target_status: Control
+var target_bar: Control
+var target_fill: Control
+var target_hp: Label
 var zone_label: Label
 var camera_mode_button: Button
 var minimap: Control
@@ -135,6 +139,12 @@ func _ready():
 				if config.has_section_key(section,key): config.erase_section_key(section,key)
 		config.set_value("ui","hud_layout",4)
 		config.save("user://zmb.cfg")
+	if int(config.get_value("ui","hud_layout",0))<5:
+		for key in ["TARGET","GM"]:
+			for section in ["position","size","scale","opacity"]:
+				if config.has_section_key(section,key): config.erase_section_key(section,key)
+		config.set_value("ui","hud_layout",5)
+		config.save("user://zmb.cfg")
 	lang=int(config.get_value("ui","lang",1))
 	root=Control.new()
 	add_child(root)
@@ -173,19 +183,20 @@ func _ready():
 		meter.max_value=100
 		root.add_child(meter)
 		meter_fills.append(meter)
-	target_label=label("",Vector2(460,18),Vector2(360,70))
-	target_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	build_target_status()
 	zone_label=label("",Vector2(420,76),Vector2(440,34))
 	zone_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	zone_label.add_theme_font_size_override("font_size",21)
 	make_button("MENU",Vector2(970,18),Vector2(120,48),func(): open_page("Menu"))
 	if game.gm_allowed():
-		gm_button=make_button("GM",Vector2(895,18),Vector2(64,48),func():
-			if is_instance_valid(game.target): game.gm_target=game.target
+		gm_button=make_button("GM",Vector2(855,18),Vector2(64,48),func():
+			if is_instance_valid(game.target) and not game.is_demo_target(game.target): game.gm_target=game.target
 			open_page("GM"))
 		gm_button.icon=preload("res://assets/menu_icons/gm.svg")
 		gm_button.add_theme_font_size_override("font_size",12)
-		gm_button.expand_icon=true
+		gm_button.add_theme_constant_override("icon_max_width",24)
+		gm_button.expand_icon=false
+		gm_button.size=Vector2(64,48)
 		gm_notice=label("",Vector2(380,112),Vector2(500,35))
 		gm_notice.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 		gm_notice.add_theme_color_override("font_color",Color("f6d995"))
@@ -226,7 +237,7 @@ func _ready():
 	make_button("AUTO",Vector2(1003,211),Vector2(70,70),func():
 		if not game.in_safe_zone(): game.auto=not game.auto)
 	make_button("MONSTER",Vector2(1083,211),Vector2(70,70),func():game.choose_target())
-	make_button("PLAYER",Vector2(1163,211),Vector2(70,70),func(): target_label.text="No online players (demo)")
+	make_button("PLAYER",Vector2(1163,211),Vector2(70,70),func():game.choose_player_target())
 	make_button("HP",Vector2(529,577),Vector2(64,64),func():game.hp=minf(100,game.hp+35))
 	make_button("MP",Vector2(685,577),Vector2(64,64),func():game.mp=minf(100,game.mp+35))
 	game.set_camera_follow(bool(config.get_value("camera","follow",false)))
@@ -246,7 +257,7 @@ func _ready():
 	root.add_child(chat)
 	for b in buttons: editable_hud[b.get_meta("hud_key")]=b
 	editable_hud["STATUS"]=player_status
-	editable_hud["TARGET"]=target_label
+	editable_hud["TARGET"]=target_status
 	editable_hud["ZONE"]=zone_label
 	editable_hud["CHAT"]=chat
 	editable_hud["MAP"]=minimap
@@ -364,11 +375,50 @@ func refresh_player_status():
 	status_mp.text="MP  %d / 100"%game.mp
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/100.0,0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/100.0,0,1)
-	stats.text="EXP %d/100   Gold %d   v0.1.24"%[game.xp,game.coins]
+	stats.text="EXP %d/100   Gold %d   v0.1.25"%[game.xp,game.coins]
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
 		status_portrait_view.render_target_update_mode=SubViewport.UPDATE_ONCE
+
+func build_target_status():
+	target_status=Control.new()
+	target_status.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	root.add_child(target_status)
+	target_status.position=Vector2(460,12)
+	target_status.size=Vector2(360,60)
+	target_label=status_text(target_status,Vector2.ZERO,Vector2(360,29),17)
+	target_bar=Control.new()
+	target_bar.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	target_status.add_child(target_bar)
+	target_bar.position=Vector2(15,29)
+	target_bar.size=Vector2(330,28)
+	status_art(target_bar,"07_target_track.png",Vector2.ZERO,Vector2(330,28))
+	target_fill=Control.new()
+	target_fill.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	target_fill.clip_contents=true
+	target_bar.add_child(target_fill)
+	target_fill.position=Vector2(20,6)
+	target_fill.size=Vector2(290,16)
+	status_art(target_fill,"05_hp_fill.png",Vector2.ZERO,Vector2(290,16))
+	target_hp=status_text(target_bar,Vector2.ZERO,Vector2(330,28),14)
+	target_bar.hide()
+
+func refresh_target_status(safe: bool):
+	var n: Node3D=game.target
+	if is_instance_valid(n):
+		var max_hp: float=float(n.get_meta("max_hp",40+80*int(n.get_meta("tier",0))))
+		var health: float=clampf(float(n.get_meta("hp",0)),0,max_hp)
+		target_label.text=str(n.get_meta("display_name",""))+" • LV 1" if game.is_demo_target(n) else ["Normal","Elite","Boss"][int(n.get_meta("tier",0))]+" • LV 1"
+		target_fill.size.x=290.0*health/maxf(1,max_hp)
+		target_hp.text="HP %d / %d"%[health,max_hp]
+		target_bar.show()
+	else:
+		target_bar.visible=is_instance_valid(editor_panel)
+		if target_bar.visible:
+			target_fill.size.x=290
+			target_hp.text="HP 100 / 100"
+		target_label.text=localized("หมู่บ้านวิญญาณ","Spirit Village","灵魂村") if safe else ("AUTO HUNT" if game.auto else "ZMB • OFFLINE DEMO")
 
 func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	var b := Button.new()
@@ -459,14 +509,7 @@ func _touch_start(index: int, pos: Vector2) -> bool:
 			var action: Callable = touch_actions[button]
 			action.call()
 		return true
-	if not game.in_safe_zone() and not chat.get_global_rect().has_point(pos):
-		var nearest := 65.0
-		for enemy in game.enemies:
-			if game.camera.is_position_behind(enemy.position): continue
-			var distance: float = game.camera.unproject_position(enemy.position + Vector3.UP).distance_to(pos)
-			if distance < nearest:
-				nearest = distance
-				game.target = enemy
+	if not chat.get_global_rect().has_point(pos): game.select_target_at(pos)
 	return false
 
 func _touch_move(index: int, pos: Vector2) -> bool:
@@ -608,10 +651,7 @@ func _process(delta):
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
 	zone_label.modulate=Color("a7f2bd") if safe else Color("ffaf83")
-	if safe: target_label.text=["หมู่บ้านวิญญาณ — ออกประตูเพื่อเก็บเลเวล","Spirit Village — Exit a gate to hunt","灵魂村 — 出城狩猎"][lang]
-	elif is_instance_valid(game.target): target_label.text="%s • HP %d"%[["Normal","Elite","Boss"][game.target.get_meta("tier")],game.target.get_meta("hp")]
-	elif game.auto: target_label.text="AUTO HUNT"
-	else: target_label.text="ZMB  •  OFFLINE DEMO"
+	refresh_target_status(safe)
 	if game.hp<=0 and game.started and not is_instance_valid(panel): open_page("Revive")
 	# Read-only local gameplay diagnostics used by the exported-Web smoke test.
 	diagnostic_timer -= delta
@@ -623,7 +663,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.24","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.25","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload

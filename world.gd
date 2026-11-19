@@ -8,6 +8,7 @@ var player: CharacterBody3D
 var camera: Camera3D
 var ui: CanvasLayer
 var enemies: Array[Node3D] = []
+var demo_players: Array[Node3D] = []
 var loot: Array[Node3D] = []
 var target: Node3D
 var hp := 100.0
@@ -232,6 +233,9 @@ func _ready():
 	camera.current = true
 	for i in range(12):
 		spawn_enemy(i)
+	if gm_test_enabled:
+		spawn_demo_player(Vector3(1.8,0,-3.8),"Training Ally")
+		spawn_demo_player(Vector3(1.8,0,-17.5),"Training Rival")
 	ui = HUD.new()
 	ui.game = self
 	add_child(ui)
@@ -371,16 +375,72 @@ func choose_target():
 		return
 	target = sorted[0] if nearest_target_only else sorted[(sorted.find(target)+1)%sorted.size()]
 
+func spawn_demo_player(pos: Vector3, display_name: String):
+	var n := Node3D.new()
+	add_child(n)
+	n.position=pos
+	n.set_meta("demo_player",true)
+	n.set_meta("display_name",display_name)
+	n.set_meta("hp",100.0)
+	n.set_meta("max_hp",100.0)
+	figure(n,Color("416b9b"))
+	var tag := Label3D.new()
+	tag.text=display_name+" [TEST]"
+	tag.position=Vector3(0,2.2,0)
+	tag.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+	tag.font_size=32
+	tag.outline_size=6
+	tag.modulate=Color("a9dbff")
+	n.add_child(tag)
+	demo_players.append(n)
+
+func is_demo_target(n: Node3D) -> bool:
+	return is_instance_valid(n) and n.get_meta("demo_player",false)
+
+func choose_player_target():
+	var candidates := demo_players.filter(func(n): return is_instance_valid(n) and n.get_meta("hp",0)>0 and is_safe_position(n.position)==in_safe_zone())
+	candidates.sort_custom(func(a,b): return a.position.distance_squared_to(player.position)<b.position.distance_squared_to(player.position))
+	if candidates.is_empty():
+		target=null
+		return
+	target=candidates[0] if nearest_target_only else candidates[(candidates.find(target)+1)%candidates.size()]
+	auto=false
+
+func select_target_at(pos: Vector2):
+	var candidates: Array[Node3D]=demo_players.duplicate()
+	if not in_safe_zone(): candidates.append_array(enemies)
+	var nearest := 65.0
+	for n in candidates:
+		if not is_instance_valid(n) or n.get_meta("hp",0)<=0 or is_safe_position(n.position)!=in_safe_zone(): continue
+		if camera.is_position_behind(n.position+Vector3.UP): continue
+		var d := camera.unproject_position(n.position+Vector3.UP).distance_to(pos)
+		if d<nearest:
+			nearest=d
+			target=n
+	if is_demo_target(target): auto=false
+
 func attack(skill: int):
 	if not started or hp<=0 or cooldown>0 or in_safe_zone():
 		return
 	if not is_instance_valid(target): choose_target()
 	if not is_instance_valid(target): return
+	if is_demo_target(target) and is_safe_position(target.position): return
 	var ranges := [2.7,5.5,12.0]
 	if player.position.distance_to(target.position)>ranges[weapon]+skill: return
 	if mp < skill*5: return
 	mp -= skill*5
 	cooldown = (0.45+skill*0.2)/gm_attack_multiplier
+	if is_demo_target(target):
+		var dummy := target
+		dummy.set_meta("hp",maxf(0,float(dummy.get_meta("hp"))-gm_attack_power-skill*7))
+		if dummy.get_meta("hp")<=0:
+			target=null
+			dummy.hide()
+			get_tree().create_timer(3).timeout.connect(func():
+				if is_instance_valid(dummy):
+					dummy.set_meta("hp",100.0)
+					dummy.show())
+		return
 	var hits := [target]
 	if skill==3:
 		for n in enemies:
@@ -522,14 +582,7 @@ func _unhandled_input(event):
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index==MOUSE_BUTTON_WHEEL_UP: zoom=maxf(4,zoom-zoom_sensitivity)
 		if event.button_index==MOUSE_BUTTON_WHEEL_DOWN: zoom=minf(16,zoom+zoom_sensitivity)
-		if event.button_index==MOUSE_BUTTON_LEFT and not in_safe_zone():
-			var nearest := 65.0
-			for n in enemies:
-				if camera.is_position_behind(n.position): continue
-				var d := camera.unproject_position(n.position+Vector3.UP).distance_to(event.position)
-				if d<nearest:
-					nearest=d
-					target=n
+		if event.button_index==MOUSE_BUTTON_LEFT: select_target_at(event.position)
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_SPACE: jump_requested=true
@@ -568,10 +621,11 @@ func _physics_process(delta: float):
 	var move := movement_vector(input)
 	if in_safe_zone():
 		auto=false
-		target=null
+		if not is_demo_target(target) or not is_safe_position(target.position): target=null
 		hp=minf(100.0,hp+delta*6.0)
 		mp=minf(100.0,mp+delta*4.0)
 	if auto:
+		if is_demo_target(target): target=null
 		if not is_instance_valid(target): choose_target()
 		if is_instance_valid(target):
 			var diff := target.position-player.position
@@ -592,7 +646,8 @@ func _physics_process(delta: float):
 	var safe := in_safe_zone()
 	if safe:
 		auto=false
-		target=null
+		if not is_demo_target(target) or not is_safe_position(target.position): target=null
+	elif is_demo_target(target) and is_safe_position(target.position): target=null
 	for n in enemies:
 		var home: Vector3 = n.get_meta("home")
 		if is_safe_position(n.position, 0.6):
