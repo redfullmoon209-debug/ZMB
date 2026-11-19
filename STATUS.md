@@ -1,5 +1,9 @@
 # ZMB v0.1 — Offline prototype
 
+## v0.1.7 — UHD UI asset integration
+
+Original transparent PNGs recovered from the approved UI designs are stored in `assets/uhd/` (13 files). The shared popup, item grids, market/trade menu icons and live HP/MP/EXP meters use these assets. Portrait, nameplate and level badge artwork is available for the next HUD layout pass. Existing controls, touch capture, camera, safe zone and demo gameplay are unchanged. Missing artwork retains the prior UI until its individual PNG is available.
+
 Godot 4.6.3 / GDScript / Compatibility renderer / single-threaded Web.
 
 Playable locally: character selection, primitive village, movement, jump, dash, run, camera rotation/zoom, monsters, target cycling/tapping, three weapon ranges, basic and three skills, HP/MP, EXP/level, loot, auto hunt, potion buttons, death/revive, bag item display, configurable HUD. Keyboard WASD, Space, Shift, F, 1–3, E, Tab; right mouse drag and wheel. Touch HUD uses mouse-emulation events.

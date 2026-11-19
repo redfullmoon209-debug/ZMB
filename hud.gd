@@ -28,6 +28,8 @@ var scroll_start_value := 0
 var scroll_dragged := false
 var swallow_scroll_release := false
 var menu_items: Dictionary = {}
+const UHD = "res://assets/uhd/"
+var meter_fills: Array[TextureProgressBar] = []
 const MENU_PAGES = ["Bag","Quest","Social","Trade","Market","Shop","Ranking","News","Map","Settings"]
 var config := ConfigFile.new()
 var names := {"Bag":["กระเป๋า","Bag","背包"],"Storage":["คลัง","Storage","仓库"],"Character":["ตัวละคร","Character","角色"],"Skills":["สกิล","Skills","技能"],"Market":["ตลาดโลก","Market","市场"],"Shop":["ร้านค้า","Shop","商店"],"Quest":["เควส","Quest","任务"],"Social":["สังคม","Social","社交"],"Ranking":["อันดับ","Ranking","排行"],"News":["ประกาศ","News","公告"],"Settings":["ตั้งค่า","Settings","设置"],"Trade":["แลกเปลี่ยน","Trade","交易"],"Map":["แผนที่","Map","地图"]}
@@ -60,6 +62,18 @@ func _ready():
 	theme.default_font_size=18
 	root.theme=theme
 	stats=label("",Vector2(22,18),Vector2(320,100))
+	# Decorative meters do not participate in touch routing.
+	for i in range(3):
+		var meter := TextureProgressBar.new()
+		meter.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		meter.position=Vector2(22,110+i*17)
+		meter.texture_under=load(UHD+["03_HP_Track.png","04_MP_Track.png","05_EXP_Track.png"][i])
+		meter.texture_progress=load(UHD+["07_HP_Fill.png","08_MP_Fill.png","09_EXP_Fill.png"][i])
+		meter.nine_patch_stretch=true
+		meter.size=Vector2(220,16)
+		meter.max_value=100
+		root.add_child(meter)
+		meter_fills.append(meter)
 	target_label=label("",Vector2(460,18),Vector2(360,70))
 	target_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	zone_label=label("",Vector2(420,76),Vector2(440,34))
@@ -269,7 +283,11 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
-	stats.text="ZMB v0.1.6  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	if meter_fills.size()==3:
+		meter_fills[0].value=game.hp
+		meter_fills[1].value=game.mp
+		meter_fills[2].value=game.xp
+	stats.text="ZMB v0.1.7  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -289,7 +307,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.6","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.7","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -326,6 +344,11 @@ func grid(parent:Node,count:int,columns:int,contents:Array=[]):
 		b.text="◆" if i<contents.size() else "·"
 		b.tooltip_text=str(contents[i]) if i<contents.size() else "Empty"
 		b.custom_minimum_size=Vector2(48,42)
+		var slot_style := StyleBoxTexture.new()
+		slot_style.texture=preload("res://assets/uhd/slot.png")
+		for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
+			slot_style.set_content_margin(side,1)
+		b.add_theme_stylebox_override("normal",slot_style)
 		g.add_child(b)
 	return g
 
@@ -351,6 +374,8 @@ func build_quick_menu():
 		b.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		b.clip_text=true
 		b.icon=load("res://assets/menu_icons/"+key.to_lower()+".png")
+		if key in ["Market","Trade"]:
+			b.icon=load(UHD+key.to_lower()+".png")
 		b.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
 		b.vertical_icon_alignment=VERTICAL_ALIGNMENT_TOP
 		b.add_theme_constant_override("icon_max_width",38)
@@ -376,6 +401,11 @@ func open_page(page:String):
 	panel.position=Vector2(175,100)
 	panel.size=Vector2(930,520)
 	panel.z_index=10
+	var popup_style := StyleBoxTexture.new()
+	popup_style.texture=preload("res://assets/uhd/popup.png")
+	for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
+		popup_style.set_content_margin(side,1)
+	panel.add_theme_stylebox_override("panel",popup_style)
 	var margin := MarginContainer.new()
 	for side in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+side,18)
 	panel.add_child(margin)
