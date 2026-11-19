@@ -25,8 +25,8 @@ const server = http.createServer((req, res) => {
     page.on('response', res => {if(res.status() >= 400) console.log('HTTP ERROR:',res.status(),res.url());});
     await page.goto(`http://127.0.0.1:${server.address().port}/?zmbtest=1`);
     console.log('Page loaded:',await page.title(),await page.locator('body').innerText());
-    await page.waitForFunction(() => window.zmbDiagnostics?.version === '0.1.3' && window.zmbDiagnostics.controls.START, null, {timeout:60000});
-    const diag = () => page.evaluate(() => window.zmbDiagnostics);
+    await page.waitForFunction(() => typeof window.zmbDiagnosticsJSON==='string' && JSON.parse(window.zmbDiagnosticsJSON).controls.START, null, {timeout:30000});
+    const diag = () => page.evaluate(() => JSON.parse(window.zmbDiagnosticsJSON));
     const initial = await diag();
     assert.equal(initial.ready,true,'Web touch queue failed to initialize');
     const canvas = await page.locator('canvas').boundingBox();
@@ -35,22 +35,22 @@ const server = http.createServer((req, res) => {
     }
     const start = point(initial.controls.START);
     await page.touchscreen.tap(start.x,start.y);
-    await page.waitForFunction(() => window.zmbDiagnostics.started);
+    await page.waitForFunction(() => JSON.parse(window.zmbDiagnosticsJSON).started);
     await page.waitForTimeout(350);
     const d = await diag();
     const joy = point(d.controls['◉'],0.5,0.15,1);
     const jump = point(d.controls.JUMP,0.5,0.5,2);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[joy]});
-    await page.waitForFunction(() => window.zmbDiagnostics.stick[1] < -0.5 && window.zmbDiagnostics.velocity[2] < -1);
+    await page.waitForFunction(() => {const d=JSON.parse(window.zmbDiagnosticsJSON);return d.stick[1]<-0.5&&d.velocity[2]<-1;});
     console.log('Joystick moving:',await diag());
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[joy,jump]});
-    await page.waitForFunction(() => {const d=window.zmbDiagnostics;return d.touches===2&&d.stick[1]<-0.5&&d.position[1]>0.1&&d.velocity[2]<-1;}, null, {timeout:5000});
+    await page.waitForFunction(() => {const d=JSON.parse(window.zmbDiagnosticsJSON);return d.touches===2&&d.stick[1]<-0.5&&d.position[1]>0.1&&d.velocity[2]<-1;}, null, {timeout:5000});
     console.log('PASS: actual Godot Web build moves and jumps with two simultaneous browser touches');
     await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-    await page.waitForFunction(() => window.zmbDiagnostics.stick[0]===0&&window.zmbDiagnostics.stick[1]===0);
+    await page.waitForFunction(() => JSON.parse(window.zmbDiagnosticsJSON).stick.every(n=>n===0));
   } catch (error) {
-    console.log('Failure state:',await page.evaluate(()=>({body:document.body.innerText,diagnostics:window.zmbDiagnostics,bridge:typeof window.zmbTouchDrain,webgl2:!!document.createElement('canvas').getContext('webgl2'),canvas:document.querySelector('canvas')?.getBoundingClientRect().toJSON()})));
+    console.log('Failure state:',await page.evaluate(()=>({body:document.body.innerText,diagnostics:window.zmbDiagnosticsJSON,bridge:typeof window.zmbTouchDrain,ready:window.zmbTouchReady,gameplay:window.zmbGameplay,webgl2:!!document.createElement('canvas').getContext('webgl2'),canvas:document.querySelector('canvas')?.getBoundingClientRect().toJSON()})));
     throw error;
   } finally { await browser.close(); server.close(); }
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});

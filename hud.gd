@@ -16,6 +16,7 @@ var joystick_finger := -1
 var web_bridge_ready := false
 var web_diagnostics := false
 var diagnostic_timer := 0.0
+var browser_window: JavaScriptObject
 var web_drag_positions: Dictionary = {}
 var start_button: Button
 var config := ConfigFile.new()
@@ -117,6 +118,7 @@ func _set_touch_stick(pos: Vector2):
 func _install_web_touch():
 	# Queue native events without taking over the canvas or calling into WASM
 	# from inside a DOM callback. Godot drains the queue on its own frame.
+	browser_window = JavaScriptBridge.get_interface("window")
 	var installed = JavaScriptBridge.eval("""
 	(() => {
 	  const canvas = document.querySelector('canvas');
@@ -165,6 +167,7 @@ func _install_web_touch():
 	""", true)
 	web_bridge_ready = installed == true and JavaScriptBridge.eval("typeof window.zmbTouchDrain === 'function'", true) == true
 	web_diagnostics = OS.has_feature("web")
+	print("ZMB touch bridge ready: ",web_bridge_ready)
 	if not web_bridge_ready:
 		return
 	JavaScriptBridge.eval("window.zmbTouchReady = true", true)
@@ -315,7 +318,9 @@ func _process(delta):
 		for b in buttons: controls[b.text] = _web_rect(b)
 		if is_instance_valid(start_button): controls["START"] = _web_rect(start_button)
 		var d := {"version":"0.1.3","ready":web_bridge_ready,"started":game.started,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
-		JavaScriptBridge.eval("window.zmbDiagnostics = " + JSON.stringify(d), true)
+		var payload := JSON.stringify(d)
+		if browser_window != null:
+			browser_window.zmbDiagnosticsJSON = payload
 
 func close_page():
 	if is_instance_valid(panel): panel.queue_free()
