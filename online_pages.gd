@@ -35,7 +35,9 @@ static func social(h,p: Node):
 		0:
 			search_box(h,left,h.localized("ค้นหาชื่อผู้เล่น","Search player name","搜索玩家"))
 			disabled(h,left,h.localized("เพิ่มเพื่อน","Add friend","添加好友"))
-			ui.caption(left,h.localized("ยังไม่มีรายชื่อ","No entries","暂无记录"))
+			if h.demo_friends.is_empty(): ui.caption(left,h.localized("ยังไม่มีรายชื่อ","No entries","暂无记录"))
+			else:
+				for who in h.demo_friends: ui.caption(left,str(who)+" [TEST]")
 			ui.caption(right,h.localized("แชทส่วนตัว","Private chat","私聊"),22)
 			ui.caption(right,h.localized("เลือกเพื่อนที่ออนไลน์เพื่อสนทนา","Select an online friend to chat","选择在线好友聊天"))
 			var chat:=search_box(h,right,h.localized("พิมพ์ข้อความ","Type message","输入消息"))
@@ -45,6 +47,7 @@ static func social(h,p: Node):
 		1:
 			ui.caption(left,h.localized("ตัวละครของคุณ (ยังไม่มีปาร์ตี้)","Your character (no party)","你的角色（未组队）"))
 			ui.caption(left,"LV %d  •  HP %d / 100  •  MP %d / 100"%[h.game.level,h.game.hp,h.game.mp])
+			for who in h.demo_party: ui.caption(left,str(who)+" • "+h.localized("เชิญแล้ว (จำลอง)","Invited (demo)","已邀请（测试）"))
 			ui.caption(right,h.localized("ข้อมูลและโบนัสปาร์ตี้","Party info & bonuses","队伍信息及加成"),22)
 			search_box(h,right,h.localized("ชื่อผู้เล่น","Player name","玩家名称"))
 			disabled(h,right,h.localized("เชิญเข้าปาร์ตี้","Invite","邀请"))
@@ -60,6 +63,7 @@ static func social(h,p: Node):
 			ui.caption(left,h.localized("อันดับตามเลเวลกิลด์","Ranked by guild level","按公会等级排行"))
 			ui.caption(left,h.localized("ยังไม่มีข้อมูลกิลด์","No guild data available","暂无公会数据"))
 			ui.caption(right,h.localized("ตรากิลด์ / ข้อมูล / สมาชิกออนไลน์","Emblem / info / online members","徽章 / 信息 / 在线成员"),22)
+			for who in h.demo_guild: ui.caption(right,str(who)+" • "+h.localized("เชิญแล้ว (จำลอง)","Invited (demo)","已邀请（测试）"))
 			disabled(h,right,h.localized("สมัครเข้ากิลด์","Apply","申请加入"))
 			disabled(h,right,h.localized("สร้างกิลด์","Create guild","创建公会"))
 
@@ -82,6 +86,7 @@ static func slots(h,p: Node,count: int, cols: int, size: Vector2, items: Array, 
 static func trade(h,p: Node):
 	var ui=preload("res://service_pages.gd").new()
 	note(h,p)
+	if not h.trade_partner.is_empty(): ui.caption(p,h.localized("คู่แลกเปลี่ยนจำลอง: ","Demo trade partner: ","测试交易对象：")+h.trade_partner)
 	var row:=HBoxContainer.new()
 	p.add_child(row)
 	var bag: VBoxContainer=ui.column(row,510)

@@ -9,6 +9,7 @@ var camera: Camera3D
 var ui: CanvasLayer
 var enemies: Array[Node3D] = []
 var demo_players: Array[Node3D] = []
+var follow_player: Node3D
 var loot: Array[Node3D] = []
 var target: Node3D
 var hp := 100.0
@@ -405,6 +406,14 @@ func choose_player_target():
 		return
 	target=candidates[0] if nearest_target_only else candidates[(candidates.find(target)+1)%candidates.size()]
 	auto=false
+	if follow_player!=target: follow_player=null
+
+func toggle_player_follow():
+	if not is_demo_target(target): return
+	if follow_player==target: follow_player=null
+	else:
+		follow_player=target
+		auto=false
 
 func select_target_at(pos: Vector2):
 	var candidates: Array[Node3D]=demo_players.duplicate()
@@ -418,6 +427,7 @@ func select_target_at(pos: Vector2):
 			nearest=d
 			target=n
 	if is_demo_target(target): auto=false
+	if follow_player!=target: follow_player=null
 
 func attack(skill: int):
 	if not started or hp<=0 or cooldown>0 or in_safe_zone():
@@ -521,6 +531,7 @@ func revive():
 	player.position=RESPAWN_POINT
 	player.velocity=Vector3.ZERO
 	target=null
+	follow_player=null
 	auto=false
 	follow_input_active=false
 	player_visual.rotation.y=PI
@@ -619,6 +630,13 @@ func _physics_process(delta: float):
 	input.x += float(Input.is_physical_key_pressed(KEY_D))-float(Input.is_physical_key_pressed(KEY_A))
 	input.y += float(Input.is_physical_key_pressed(KEY_S))-float(Input.is_physical_key_pressed(KEY_W))
 	var move := movement_vector(input)
+	if is_instance_valid(follow_player):
+		if move.length()>0.02 or auto or follow_player!=target or follow_player.get_meta("hp",0)<=0 or is_safe_position(follow_player.position)!=in_safe_zone():
+			follow_player=null
+		else:
+			var follow_delta := follow_player.position-player.position
+			follow_delta.y=0
+			if follow_delta.length()>2.0: move=follow_delta.normalized()
 	if in_safe_zone():
 		auto=false
 		if not is_demo_target(target) or not is_safe_position(target.position): target=null

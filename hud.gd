@@ -17,6 +17,20 @@ var target_status: Control
 var target_bar: Control
 var target_fill: Control
 var target_hp: Label
+var target_portrait_art: TextureRect
+var target_portrait_image: TextureRect
+var target_view: SubViewport
+var target_model: Node3D
+var portrait_source_id := 0
+var target_menu_button: Button
+var target_menu: Control
+var target_actions: Array[Button]=[]
+var target_notice: Label
+var target_notice_time := 0.0
+var demo_friends: Array[String]=[]
+var demo_party: Array[String]=[]
+var demo_guild: Array[String]=[]
+var trade_partner := ""
 var zone_label: Label
 var camera_mode_button: Button
 var minimap: Control
@@ -145,6 +159,12 @@ func _ready():
 				if config.has_section_key(section,key): config.erase_section_key(section,key)
 		config.set_value("ui","hud_layout",5)
 		config.save("user://zmb.cfg")
+	if int(config.get_value("ui","hud_layout",0))<6:
+		for key in ["TARGET","ZONE"]:
+			for section in ["position","size","scale","opacity"]:
+				if config.has_section_key(section,key): config.erase_section_key(section,key)
+		config.set_value("ui","hud_layout",6)
+		config.save("user://zmb.cfg")
 	lang=int(config.get_value("ui","lang",1))
 	root=Control.new()
 	add_child(root)
@@ -184,7 +204,7 @@ func _ready():
 		root.add_child(meter)
 		meter_fills.append(meter)
 	build_target_status()
-	zone_label=label("",Vector2(420,76),Vector2(440,34))
+	zone_label=label("",Vector2(420,106),Vector2(440,34))
 	zone_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	zone_label.add_theme_font_size_override("font_size",21)
 	make_button("MENU",Vector2(970,18),Vector2(120,48),func(): open_page("Menu"))
@@ -197,7 +217,7 @@ func _ready():
 		gm_button.add_theme_constant_override("icon_max_width",24)
 		gm_button.expand_icon=false
 		gm_button.size=Vector2(64,48)
-		gm_notice=label("",Vector2(380,112),Vector2(500,35))
+		gm_notice=label("",Vector2(380,142),Vector2(500,35))
 		gm_notice.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 		gm_notice.add_theme_color_override("font_color",Color("f6d995"))
 	minimap=preload("res://minimap.gd").new()
@@ -375,7 +395,7 @@ func refresh_player_status():
 	status_mp.text="MP  %d / 100"%game.mp
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/100.0,0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/100.0,0,1)
-	stats.text="EXP %d/100   Gold %d   v0.1.25"%[game.xp,game.coins]
+	stats.text="EXP %d/100   Gold %d   v0.1.26"%[game.xp,game.coins]
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -385,13 +405,37 @@ func build_target_status():
 	target_status=Control.new()
 	target_status.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	root.add_child(target_status)
-	target_status.position=Vector2(460,12)
-	target_status.size=Vector2(360,60)
-	target_label=status_text(target_status,Vector2.ZERO,Vector2(360,29),17)
+	target_status.position=Vector2(430,12)
+	target_status.size=Vector2(410,92)
+	target_portrait_art=status_art(target_status,"01_portrait_frame.png",Vector2.ZERO,Vector2(72,72))
+	target_portrait_image=TextureRect.new()
+	target_portrait_image.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	target_portrait_image.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	target_status.add_child(target_portrait_image)
+	target_portrait_image.position=Vector2(12,7)
+	target_portrait_image.size=Vector2(48,53)
+	target_view=SubViewport.new()
+	target_view.size=Vector2i(96,106)
+	target_view.own_world_3d=true
+	target_view.transparent_bg=true
+	target_view.render_target_update_mode=SubViewport.UPDATE_DISABLED
+	target_portrait_image.add_child(target_view)
+	target_portrait_image.texture=target_view.get_texture()
+	var cam := Camera3D.new()
+	cam.projection=Camera3D.PROJECTION_ORTHOGONAL
+	cam.size=0.88
+	cam.position=Vector3(0,1.51,4)
+	target_view.add_child(cam)
+	cam.current=true
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees=Vector3(-25,20,0)
+	light.light_energy=1.6
+	target_view.add_child(light)
+	target_label=status_text(target_status,Vector2(75,0),Vector2(330,29),17)
 	target_bar=Control.new()
 	target_bar.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	target_status.add_child(target_bar)
-	target_bar.position=Vector2(15,29)
+	target_bar.position=Vector2(75,29)
 	target_bar.size=Vector2(330,28)
 	status_art(target_bar,"07_target_track.png",Vector2.ZERO,Vector2(330,28))
 	target_fill=Control.new()
@@ -403,9 +447,84 @@ func build_target_status():
 	status_art(target_fill,"05_hp_fill.png",Vector2.ZERO,Vector2(290,16))
 	target_hp=status_text(target_bar,Vector2.ZERO,Vector2(330,28),14)
 	target_bar.hide()
+	target_menu_button=target_action_button(target_status,"▼",Vector2(218,59),Vector2(44,30),func():target_menu.visible=not target_menu.visible)
+	target_menu_button.hide()
+	target_menu=Control.new()
+	target_menu.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	target_status.add_child(target_menu)
+	target_menu.position=Vector2(154,94)
+	target_menu.size=Vector2(174,185)
+	target_menu.z_index=5
+	for i in range(5):
+		var action:=i
+		target_action_button(target_menu,"",Vector2(0,i*37),Vector2(174,35),func():perform_target_action(action))
+	target_menu.hide()
+	target_notice=status_text(target_status,Vector2(0,128),Vector2(410,30),15)
+	target_notice.hide()
+
+func target_action_button(parent: Control, title: String, pos: Vector2, dimensions: Vector2, action: Callable) -> Button:
+	var b:=Button.new()
+	b.text=title
+	b.position=pos
+	b.size=dimensions
+	b.add_theme_font_size_override("font_size",15)
+	b.focus_mode=Control.FOCUS_NONE
+	parent.add_child(b)
+	b.pressed.connect(action)
+	touch_actions[b]=action
+	target_actions.append(b)
+	return b
+
+func perform_target_action(action: int):
+	target_menu.hide()
+	if not game.is_demo_target(game.target): return
+	var who:=str(game.target.get_meta("display_name"))
+	var message: String
+	match action:
+		0:
+			if not demo_friends.has(who): demo_friends.append(who)
+			message=localized("เพิ่มเพื่อนจำลองแล้ว","Demo friend added","已添加测试好友")
+		1:
+			if not demo_party.has(who): demo_party.append(who)
+			message=localized("เชิญปาร์ตี้จำลองแล้ว","Demo party invitation","已模拟组队邀请")
+		2:
+			if not demo_guild.has(who): demo_guild.append(who)
+			message=localized("เชิญกิลด์จำลองแล้ว","Demo guild invitation","已模拟公会邀请")
+		3:
+			trade_partner=who
+			trade_selected.clear()
+			trade_gold=0
+			open_page("Trade")
+			return
+		4:
+			game.toggle_player_follow()
+			message=localized("กำลังเดินตาม","Following","正在跟随") if is_instance_valid(game.follow_player) else localized("หยุดเดินตาม","Follow stopped","已停止跟随")
+	target_notice.text=message+" • "+who
+	target_notice_time=3.0
+	target_notice.show()
 
 func refresh_target_status(safe: bool):
 	var n: Node3D=game.target
+	var valid:=is_instance_valid(n)
+	var show_player: bool=valid and game.is_demo_target(n)
+	target_portrait_art.visible=valid or is_instance_valid(editor_panel)
+	target_portrait_image.visible=valid
+	target_menu_button.visible=show_player
+	if not show_player: target_menu.hide()
+	if valid and portrait_source_id!=n.get_instance_id():
+		portrait_source_id=n.get_instance_id()
+		target_menu.hide()
+		if is_instance_valid(target_model): target_model.queue_free()
+		target_model=n.get_child(0).duplicate() as Node3D
+		target_model.position=Vector3.ZERO
+		target_model.rotation=Vector3(0,PI,0)
+		target_view.add_child(target_model)
+		target_view.render_target_update_mode=SubViewport.UPDATE_ONCE
+	elif not valid: portrait_source_id=0
+	if show_player:
+		var captions: Array[String]=[localized("เพิ่มเพื่อน","Add friend","添加好友"),localized("ชวนปาร์ตี้","Invite party","邀请组队"),localized("ชวนกิลด์","Invite guild","邀请公会"),localized("แลกเปลี่ยน","Trade","交易"),localized("หยุดเดินตาม","Stop following","停止跟随") if game.follow_player==n else localized("เดินตาม","Follow","跟随")]
+		for i in range(5): target_actions[i+1].text=captions[i]
+		target_menu_button.text="▲" if target_menu.visible else "▼"
 	if is_instance_valid(n):
 		var max_hp: float=float(n.get_meta("max_hp",40+80*int(n.get_meta("tier",0))))
 		var health: float=clampf(float(n.get_meta("hp",0)),0,max_hp)
@@ -493,8 +612,10 @@ func _web_rect(control: Control) -> Array:
 func _touch_start(index: int, pos: Vector2) -> bool:
 	if is_instance_valid(panel) or not game.started:
 		return false
-	for i in range(buttons.size()-1, -1, -1):
-		var button := buttons[i]
+	var hit_buttons: Array[Button]=buttons.duplicate()
+	hit_buttons.append_array(target_actions)
+	for i in range(hit_buttons.size()-1, -1, -1):
+		var button := hit_buttons[i]
 		if not button.is_visible_in_tree() or button.disabled or not button.get_global_rect().has_point(pos):
 			continue
 		if button.get_meta("round",false):
@@ -509,6 +630,7 @@ func _touch_start(index: int, pos: Vector2) -> bool:
 			var action: Callable = touch_actions[button]
 			action.call()
 		return true
+	if target_menu.visible: target_menu.hide()
 	if not chat.get_global_rect().has_point(pos): game.select_target_at(pos)
 	return false
 
@@ -652,6 +774,9 @@ func _process(delta):
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
 	zone_label.modulate=Color("a7f2bd") if safe else Color("ffaf83")
 	refresh_target_status(safe)
+	if target_notice_time>0:
+		target_notice_time-=delta
+		if target_notice_time<=0: target_notice.hide()
 	if game.hp<=0 and game.started and not is_instance_valid(panel): open_page("Revive")
 	# Read-only local gameplay diagnostics used by the exported-Web smoke test.
 	diagnostic_timer -= delta
@@ -663,7 +788,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.25","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.26","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
