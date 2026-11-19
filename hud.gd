@@ -444,7 +444,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.44"%game.coins
+	stats.text="Gold %d   v0.1.45"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -873,7 +873,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.44","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.45","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -957,7 +957,9 @@ func inventory_slot(parent: Node, caption: String, slot_size: Vector2, filled :=
 	parent.add_child(b)
 	return b
 
-func inventory_grid(parent: Node, count: int, columns: int, contents: Array=[]):
+var bag_page := 0
+
+func inventory_grid(parent: Node, count: int, columns: int, contents: Array=[], offset: int=0, slot_size: Vector2=Vector2(56,56), locked: bool=false):
 	var g := GridContainer.new()
 	g.columns=columns
 	g.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -966,15 +968,51 @@ func inventory_grid(parent: Node, count: int, columns: int, contents: Array=[]):
 	parent.add_child(g)
 	for i in range(count):
 		var filled := i<contents.size()
-		var b := inventory_slot(g,"◆" if filled else "",Vector2(56,56),filled)
+		var b := inventory_slot(g,"◆" if filled else "",slot_size,filled)
+		if locked:
+			b.disabled=true
+			b.modulate=Color("666666")
 		if filled:
 			var id: String=contents[i]
 			var data := Catalog.describe(id)
 			b.text=data.icon
 			b.modulate=data.color
 			b.tooltip_text=id
-			if selected_page in ["Bag","Storage"]: b.pressed.connect(func(): show_item_details(id,i))
+			if selected_page in ["Bag","Storage"]: b.pressed.connect(func(): show_item_details(id,offset+i))
 	return g
+
+func bag_page_buttons(parent: Node, page: String, show_locked: bool=true):
+	var pages:=HBoxContainer.new()
+	pages.alignment=BoxContainer.ALIGNMENT_CENTER
+	parent.add_child(pages)
+	var unlocked: int=game.bag_capacity()/50
+	for i in range(6 if show_locked else unlocked):
+		var title:=str(i+1)
+		if i>=unlocked: title+=" • "+localized("ล็อก","Lock","锁")
+		var b: Button=add_button(pages,title,func():bag_page=i;open_page(page))
+		b.custom_minimum_size=Vector2(68,32)
+		b.add_theme_font_size_override("font_size",13)
+		if bag_page==i:
+			var active:=StyleBoxFlat.new()
+			active.bg_color=Color("75232c")
+			active.set_corner_radius_all(6)
+			b.add_theme_stylebox_override("normal",active)
+
+func build_bag_contents(parent: Node, page: String):
+	var capacity: int=game.bag_capacity()
+	bag_page=clampi(bag_page,0,5)
+	var offset:=bag_page*50
+	var locked:=offset>=capacity
+	add_text(parent,localized("กระเป๋า","Inventory","背包")+"  %d / %d  (300 max)"%[game.items.size(),capacity])
+	inventory_grid(parent,50,10,[] if locked else game.items.slice(offset,offset+50),offset,Vector2(46,46),locked)
+	bag_page_buttons(parent,page)
+	if locked:
+		var next: int=capacity/50
+		add_text(parent,localized("ปลดล็อกหน้าถัดไป: เลเวล %d หรือออนไลน์สะสม %d ชม.","Next unlock: LV %d or %d online hours","下一页解锁：等级 %d 或累计在线 %d 小时")%[game.BAG_UNLOCK_LEVELS[next],game.BAG_UNLOCK_HOURS[next]])
+		var unlock: Button=add_button(parent,localized("ซื้อไอเทมขยายกระเป๋า","Buy bag expansion item","购买背包扩展道具")+" • %d G"%game.BAG_UNLOCK_PRICE,func():
+			if game.buy_bag_unlock(): open_page(page))
+		unlock.disabled=game.coins<game.BAG_UNLOCK_PRICE
+	add_text(parent,localized("เงิน","Gold","金币")+"  %d"%game.coins)
 
 func show_item_details(id: String, index: int=-1, equipped_slot: String=""):
 	if is_instance_valid(item_dialog): item_dialog.queue_free()
@@ -1171,14 +1209,11 @@ func build_inventory_page(content: Node, page: String):
 		"Bag":
 			add_text(left,localized("อุปกรณ์สวมใส่","Equipment","装备"))
 			equipment_preview(left)
-			add_text(right,localized("กระเป๋า","Inventory","背包")+"  %d / 48"%game.items.size())
-			inventory_grid(right,48,8,game.items)
-			add_text(right,localized("เงิน","Gold","金币")+"  %d"%game.coins)
+			build_bag_contents(right,page)
 		"Storage":
 			add_text(left,localized("คลัง (ตัวอย่าง)","Storage (preview)","仓库（预览）"))
 			inventory_grid(left,48,8)
-			add_text(right,localized("กระเป๋า","Inventory","背包"))
-			inventory_grid(right,48,8,game.items)
+			build_bag_contents(right,page)
 		"Character":
 			character_preview(left)
 			build_character_details(right)

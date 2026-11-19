@@ -141,7 +141,7 @@ func run():
 	await process_frame
 	var trade_grids: Array=hud.panel.find_children("*","GridContainer",true,false)
 	assert(trade_grids.size()==3)
-	assert(trade_grids[0].get_child_count()==48 and trade_grids[1].get_child_count()==30 and trade_grids[2].get_child_count()==30)
+	assert(trade_grids[0].get_child_count()==50 and trade_grids[1].get_child_count()==30 and trade_grids[2].get_child_count()==30)
 	trade_grids[0].get_child(0).pressed.emit()
 	assert(hud.trade_selected.size()==1 and world.items.size()==1)
 	for category in range(4):

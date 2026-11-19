@@ -139,7 +139,7 @@ func shop(hud, parent: Node):
 	caption(right,"%d Gold / %s"%[product.price,hud.localized("ชิ้น","item","件")])
 	var qty := SpinBox.new()
 	qty.min_value=1
-	qty.max_value=48
+	qty.max_value=hud.game.bag_capacity()
 	qty.value=1
 	right.add_child(qty)
 	var total:=caption(right,"%d Gold"%product.price)
@@ -148,10 +148,11 @@ func shop(hud, parent: Node):
 	hud.add_button(right,hud.localized("ซื้อ (ทดสอบ)","Buy (demo)","购买（测试）"),func():
 		var amount:=int(qty.value)
 		var cost:=amount*int(product.price)
-		if hud.game.coins<cost or hud.game.items.size()+amount>48:
+		if hud.game.coins<cost or hud.game.items.size()+amount>hud.game.bag_capacity():
 			message.text=hud.localized("เงินหรือพื้นที่กระเป๋าไม่พอ","Insufficient gold or bag space","金币或背包空间不足")
 			return
 		hud.game.coins-=cost
 		for i in range(amount): hud.game.items.append(product.name)
+		hud.game.save_profile()
 		hud.shop_history.push_front({"name":product.name,"qty":amount,"total":cost,"time":Time.get_datetime_string_from_system()})
 		hud.open_page("Shop"))

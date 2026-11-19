@@ -67,7 +67,7 @@ static func social(h,p: Node):
 			disabled(h,right,h.localized("สมัครเข้ากิลด์","Apply","申请加入"))
 			disabled(h,right,h.localized("สร้างกิลด์","Create guild","创建公会"))
 
-static func slots(h,p: Node,count: int, cols: int, size: Vector2, items: Array, selected: Dictionary={}, action: Callable=Callable()):
+static func slots(h,p: Node,count: int, cols: int, size: Vector2, items: Array, selected: Dictionary={}, action: Callable=Callable(), offset: int=0):
 	var g:=GridContainer.new()
 	g.columns=cols
 	g.add_theme_constant_override("h_separation",3)
@@ -75,11 +75,11 @@ static func slots(h,p: Node,count: int, cols: int, size: Vector2, items: Array, 
 	p.add_child(g)
 	for i in range(count):
 		var filled:=i<items.size()
-		var b: Button=h.inventory_slot(g,("✓" if selected.has(i) else "◆") if filled else "",size,filled)
+		var b: Button=h.inventory_slot(g,("✓" if selected.has(i+offset) else "◆") if filled else "",size,filled)
 		if filled:
 			b.tooltip_text=str(items[i])
-			if selected.has(i): b.modulate=Color("777777")
-			if action.is_valid(): b.pressed.connect(func():action.call(i))
+			if selected.has(i+offset): b.modulate=Color("777777")
+			if action.is_valid(): b.pressed.connect(func():action.call(i+offset))
 		else: b.disabled=true
 	return g
 
@@ -94,11 +94,15 @@ static func trade(h,p: Node):
 	var own: VBoxContainer=ui.column(row,255)
 	row.add_child(VSeparator.new())
 	var other: VBoxContainer=ui.column(row,255)
-	ui.caption(bag,h.localized("กระเป๋าของฉัน • 48 ช่อง","My bag • 48 slots","我的背包 • 48格"),20)
-	slots(h,bag,48,8,Vector2(56,52),h.game.items,h.trade_selected,func(i):
+	var capacity: int=h.game.bag_capacity()
+	h.bag_page=clampi(h.bag_page,0,capacity/50-1)
+	var offset: int=h.bag_page*50
+	ui.caption(bag,h.localized("กระเป๋าของฉัน","My bag","我的背包")+" • %d/%d"%[h.game.items.size(),capacity],20)
+	slots(h,bag,50,10,Vector2(46,46),h.game.items.slice(offset,offset+50),h.trade_selected,func(i):
 		if h.trade_selected.has(i): h.trade_selected.erase(i)
 		elif h.trade_selected.size()<30: h.trade_selected[i]=h.game.items[i]
-		h.open_page("Trade"))
+		h.open_page("Trade"),offset)
+	h.bag_page_buttons(bag,"Trade",false)
 	ui.caption(own,h.localized("เสนอของฉัน","My offer","我的报价"),20)
 	var offer: Array=h.trade_selected.values()
 	slots(h,own,30,5,Vector2(46,43),offer,{},func(i):h.trade_selected.erase(h.trade_selected.keys()[i]);h.open_page("Trade"))
@@ -146,10 +150,14 @@ static func market(h,p: Node):
 			var bag: VBoxContainer=ui.column(row,510)
 			row.add_child(VSeparator.new())
 			var info: VBoxContainer=ui.column(row,510)
-			ui.caption(bag,h.localized("กระเป๋า • 48 ช่อง","Bag • 48 slots","背包 • 48格"))
+			var capacity: int=h.game.bag_capacity()
+			h.bag_page=clampi(h.bag_page,0,capacity/50-1)
+			var offset: int=h.bag_page*50
+			ui.caption(bag,h.localized("กระเป๋า","Bag","背包")+" • %d/%d"%[h.game.items.size(),capacity])
 			var selected: Dictionary={}
 			if h.market_selected>=0: selected[h.market_selected]=true
-			slots(h,bag,48,8,Vector2(56,52),h.game.items,selected,func(i):h.market_selected=i;h.open_page("Market"))
+			slots(h,bag,50,10,Vector2(46,46),h.game.items.slice(offset,offset+50),selected,func(i):h.market_selected=i;h.open_page("Market"),offset)
+			h.bag_page_buttons(bag,"Market",false)
 			ui.caption(info,h.localized("รายละเอียดการขาย","Sell details","出售详情"),22)
 			if h.market_selected<0 or h.market_selected>=h.game.items.size():
 				ui.caption(info,h.localized("เลือกไอเทมจากกระเป๋า","Select item from bag","选择背包物品"))
@@ -188,7 +196,7 @@ static func market(h,p: Node):
 				var l: Label=ui.caption(row,"%s ×%d  •  %d Gold / item"%[entry.name,entry.qty,entry.price])
 				l.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 				h.add_button(row,h.localized("ยกเลิก","Cancel","取消"),func():
-					if h.game.items.size()+entry.qty>48: return
+					if h.game.items.size()+entry.qty>h.game.bag_capacity(): return
 					for i in range(entry.qty): h.game.items.append(entry.name)
 					h.market_listings.erase(entry)
 					h.market_history.push_front({"name":entry.name,"qty":entry.qty,"price":entry.price,"time":Time.get_datetime_string_from_system()})

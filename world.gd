@@ -21,6 +21,27 @@ var coins := 0
 var items: Array[String] = []
 var equipment: Dictionary = {}
 var profile_path := ""
+const BAG_PAGE_SIZE := 50
+const BAG_MAX_PAGES := 6
+const BAG_UNLOCK_LEVELS := [0,10,20,30,40,50]
+const BAG_UNLOCK_HOURS := [0,1,3,6,12,24]
+const BAG_UNLOCK_PRICE := 500
+var bag_unlocked_pages := 1
+
+func bag_capacity() -> int:
+	while bag_unlocked_pages<BAG_MAX_PAGES:
+		var next:=bag_unlocked_pages
+		if level<BAG_UNLOCK_LEVELS[next] and total_play_seconds()<BAG_UNLOCK_HOURS[next]*3600: break
+		bag_unlocked_pages+=1
+	return bag_unlocked_pages*BAG_PAGE_SIZE
+
+func buy_bag_unlock() -> bool:
+	bag_capacity()
+	if bag_unlocked_pages>=BAG_MAX_PAGES or coins<BAG_UNLOCK_PRICE: return false
+	coins-=BAG_UNLOCK_PRICE
+	bag_unlocked_pages+=1
+	save_profile()
+	return true
 
 func bonus(stat: String) -> float:
 	var sum := 0.0
@@ -45,7 +66,7 @@ func equip_item(index: int, slot: String) -> bool:
 	return true
 
 func unequip_item(slot: String) -> bool:
-	if not equipment.has(slot) or items.size()>=48: return false
+	if not equipment.has(slot) or items.size()>=bag_capacity(): return false
 	items.append(equipment[slot]); equipment.erase(slot)
 	hp=minf(hp,max_hp()); mp=minf(mp,max_mp())
 	ui.trade_selected.clear(); ui.market_selected=-1
@@ -54,16 +75,19 @@ func unequip_item(slot: String) -> bool:
 
 func save_profile():
 	if profile_path.is_empty() or not started: return
+	bag_capacity()
 	var cfg := ConfigFile.new()
-	for key in ["items","equipment","coins","xp","level","monsters_defeated","shards_collected","quest_claimed"]:
+	for key in ["items","equipment","coins","xp","level","monsters_defeated","shards_collected","quest_claimed","bag_unlocked_pages"]:
 		cfg.set_value("character",key,get(key))
 	cfg.save(profile_path)
 
 func load_profile(path: String):
 	profile_path=path
+	bag_unlocked_pages=1
 	var cfg := ConfigFile.new()
 	if cfg.load(path)!=OK: return
 	items.assign(cfg.get_value("character","items",[]))
+	bag_unlocked_pages=clampi(maxi(int(cfg.get_value("character","bag_unlocked_pages",1)),ceili(items.size()/50.0)),1,BAG_MAX_PAGES)
 	equipment=cfg.get_value("character","equipment",{})
 	for key in ["coins","xp","level","monsters_defeated","shards_collected","quest_claimed"]:
 		set(key,cfg.get_value("character",key,get(key)))
@@ -212,7 +236,7 @@ func gm_execute(command: String, value: float=0, item: String="") -> bool:
 		"item":
 			if locked or item not in ["HP Potion","MP Potion","Spirit shard"]: return false
 			if amount>0:
-				if items.size()+amount>48: return false
+				if items.size()+amount>bag_capacity(): return false
 				for i in range(amount): items.append(item)
 			else:
 				if items.count(item)<-amount: return false
@@ -668,7 +692,7 @@ func try_pending_attack():
 func collect(radius: float=4.0):
 	for d in loot.duplicate():
 		var offset: Vector3 = player.position-d.position
-		if Vector2(offset.x,offset.z).length()<radius and absf(offset.y)<1.5 and items.size()<48:
+		if Vector2(offset.x,offset.z).length()<radius and absf(offset.y)<1.5 and items.size()<bag_capacity():
 			var id: String=d.get_meta("item","Spirit shard")
 			items.append(id)
 			if id=="Spirit shard": shards_collected+=1

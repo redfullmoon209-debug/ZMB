@@ -40,7 +40,7 @@ static func item_row(h,p: Node):
 	row.add_child(items)
 	var qty:=SpinBox.new()
 	qty.min_value=1
-	qty.max_value=48
+	qty.max_value=h.game.bag_capacity()
 	qty.value=1
 	row.add_child(qty)
 	h.add_button(row,"+",func():run(h,"item",qty.value,items.get_item_text(items.selected)))
