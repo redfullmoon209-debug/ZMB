@@ -1,5 +1,9 @@
 # ZMB v0.1 — Offline prototype
 
+## v0.1.12 — Pinch camera zoom
+
+Removed both HUD zoom buttons. Two touches starting on the world pinch to adjust camera distance (4–16 m); single-finger drag orbits again after release. Joystick and action-button fingers are excluded from the gesture. A camera distance slider remains in Settings; desktop wheel zoom is unchanged. Native input regression passed and the exported-Web test now checks pinch gestures too.
+
 ## v0.1.11 — Character statistics and playtime
 
 Character information shows 17 localized live fields, with session time measured from character entry using monotonic time. Local accumulated playtime and first-entry timestamp are saved separately every 10 seconds and on focus loss/exit. Account registration remains unavailable until real authentication exists. All browser-local values are untrusted and must never be used as anti-cheat evidence. Production must store immutable account creation UTC, server-issued session IDs, server-timestamped login/logout/heartbeat records, deduplicated active seconds and server-authoritative EXP/item/level transactions. Compare progression against actual recorded playtime to flag anomalies for review, not automatic bans based on hours alone.

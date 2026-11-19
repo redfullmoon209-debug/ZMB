@@ -103,6 +103,18 @@ const server = http.createServer((req, res) => {
     await page.touchscreen.tap(mode.x,mode.y);
     await page.waitForFunction(()=>!JSON.parse(window.zmbDiagnosticsJSON).camera_follow);
     console.log('PASS: mobile vertical camera drag while moving, and toggle behind-player/free camera modes');
+    const prePinch=await diag();
+    assert.equal(prePinch.controls['+ ZOOM'],undefined);
+    assert.equal(prePinch.controls['- ZOOM'],undefined);
+    const pinchA={x:canvas.x+canvas.width*0.42,y:canvas.y+canvas.height*0.42,id:3};
+    const pinchB={x:canvas.x+canvas.width*0.60,y:pinchA.y,id:4};
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[pinchA,pinchB]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[pinchA,{...pinchB,x:pinchB.x+canvas.width*0.10}]});
+    await page.waitForFunction(z=>JSON.parse(window.zmbDiagnosticsJSON).zoom<z-0.5,prePinch.zoom);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[pinchA,{...pinchB,x:pinchB.x-canvas.width*0.06}]});
+    await page.waitForFunction(z=>JSON.parse(window.zmbDiagnosticsJSON).zoom>z+0.5,prePinch.zoom);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    console.log('PASS: browser two-finger pinch zoom in and out');
   } catch (error) {
     console.log('Failure state:',await page.evaluate(()=>({body:document.body.innerText,diagnostics:window.zmbDiagnosticsJSON,bridge:typeof window.zmbTouchDrain,ready:window.zmbTouchReady,gameplay:window.zmbGameplay,webgl2:!!document.createElement('canvas').getContext('webgl2'),canvas:document.querySelector('canvas')?.getBoundingClientRect().toJSON()})));
     throw error;

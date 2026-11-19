@@ -32,5 +32,39 @@ func run():
 	world.set_camera_follow(false)
 	world.rotate_camera(Vector2(50,0))
 	assert(not is_equal_approx(world.yaw,locked_yaw))
+	# Push actual touch events through the HUD input router, including a joystick finger.
+	world.zoom=10.0
+	var hud=world.ui
+	var joy: Vector2=hud.joystick.get_global_rect().get_center()+Vector2(0,-50)
+	touch(1,joy,true)
+	touch(2,Vector2(470,300),true)
+	touch(3,Vector2(670,300),true)
+	var before_pitch: float=world.pitch
+	drag(3,Vector2(770,300),Vector2(100,0))
+	assert(world.zoom<8.0 and world.stick.y<0 and is_equal_approx(world.pitch,before_pitch))
+	drag(3,Vector2(570,300),Vector2(-200,0))
+	assert(world.zoom>10.0 and world.zoom<=16.0)
+	touch(3,Vector2(570,300),false)
+	drag(2,Vector2(470,280),Vector2(0,-20))
+	assert(world.pitch>before_pitch)
+	touch(2,Vector2(470,280),false)
+	touch(1,joy,false)
+	assert(world.stick==Vector2.ZERO and hud.camera_touches.is_empty())
+	assert(not hud.buttons.any(func(b): return "ZOOM" in b.text))
 	print("PASS: free camera yaw/pitch, pitch limits, stable movement, behind-player follow mode")
+	print("PASS: pinch zoom in/out with independent joystick finger and single-finger resume")
 	quit()
+
+func touch(index: int, pos: Vector2, pressed: bool):
+	var event := InputEventScreenTouch.new()
+	event.index=index
+	event.position=pos
+	event.pressed=pressed
+	root.push_input(event,true)
+
+func drag(index: int, pos: Vector2, relative: Vector2):
+	var event := InputEventScreenDrag.new()
+	event.index=index
+	event.position=pos
+	event.relative=relative
+	root.push_input(event,true)
