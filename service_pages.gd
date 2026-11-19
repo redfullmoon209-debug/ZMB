@@ -18,11 +18,14 @@ func column(parent: Node, width: float) -> VBoxContainer:
 	parent.add_child(v)
 	return v
 
-func tabs(hud, parent: Node, labels: Array, active: int, action: Callable):
+func tabs(hud, parent: Node, labels: Array, active: int, action: Callable, icons: Array = []):
 	var row := HBoxContainer.new()
 	parent.add_child(row)
 	for i in range(labels.size()):
 		var b: Button=hud.add_button(row,labels[i],func():action.call(i))
+		if i<icons.size():
+			b.icon=load("res://assets/menu_icons/"+str(icons[i])+".png")
+			b.add_theme_constant_override("icon_max_width",28)
 		b.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		if i==active: b.add_theme_color_override("font_color",Color("ff9c8e"))
 	parent.add_child(HSeparator.new())

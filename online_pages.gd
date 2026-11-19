@@ -17,7 +17,7 @@ static func search_box(h,p: Node,t: String) -> LineEdit:
 
 static func social(h,p: Node):
 	var ui=preload("res://service_pages.gd").new()
-	ui.tabs(h,p,[h.localized("เพื่อน","Friends","好友"),h.localized("ปาร์ตี้","Party","队伍"),h.localized("กิลด์","Guild","公会")],h.social_tab,func(i):h.social_tab=i;h.social_sub=0;h.open_page("Social"))
+	ui.tabs(h,p,[h.localized("เพื่อน","Friends","好友"),h.localized("ปาร์ตี้","Party","队伍"),h.localized("กิลด์","Guild","公会")],h.social_tab,func(i):h.social_tab=i;h.social_sub=0;h.open_page("Social"),["social","party","guild"])
 	var subs: Array=[]
 	match h.social_tab:
 		0: subs=[h.localized("รายชื่อเพื่อน","Friends list","好友列表"),h.localized("คำขอ","Requests","申请"),h.localized("บล็อก","Blocked","黑名单")]

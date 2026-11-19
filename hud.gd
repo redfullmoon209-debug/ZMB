@@ -238,12 +238,14 @@ func _ready():
 	zone_label=label("",Vector2(420,106),Vector2(440,34))
 	zone_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	zone_label.add_theme_font_size_override("font_size",21)
-	make_button("MENU",Vector2(970,18),Vector2(120,48),func(): open_page("Menu"))
+	var main_menu := make_button("MENU",Vector2(970,18),Vector2(120,48),func(): open_page("Menu"))
+	main_menu.icon=preload("res://assets/menu_icons/menu.png")
+	main_menu.add_theme_constant_override("icon_max_width",30)
 	if game.gm_allowed():
 		gm_button=make_button("GM",Vector2(855,18),Vector2(64,48),func():
 			if is_instance_valid(game.target) and not game.is_demo_target(game.target): game.gm_target=game.target
 			open_page("GM"))
-		gm_button.icon=preload("res://assets/menu_icons/gm.svg")
+		gm_button.icon=preload("res://assets/menu_icons/gm.png")
 		gm_button.add_theme_font_size_override("font_size",12)
 		gm_button.add_theme_constant_override("icon_max_width",24)
 		gm_button.expand_icon=false
@@ -267,14 +269,14 @@ func _ready():
 	for state in ["normal","hover","pressed","focus"]:
 		joystick.add_theme_stylebox_override(state,StyleBoxEmpty.new())
 	var joystick_base := TextureRect.new()
-	joystick_base.texture=preload("res://assets/controls/joystick_base_gray.svg")
+	joystick_base.texture=preload("res://assets/controls/joystick_base_gray.png")
 	joystick_base.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 	joystick_base.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	joystick_base.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	joystick.add_child(joystick_base)
 	joystick_base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	joystick_knob=TextureRect.new()
-	joystick_knob.texture=preload("res://assets/controls/joystick_thumb_gray.svg")
+	joystick_knob.texture=preload("res://assets/controls/joystick_thumb_gray.png")
 	joystick_knob.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 	joystick_knob.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	joystick_knob.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -382,7 +384,7 @@ func build_player_status():
 	status_name.auto_translate_mode=Node.AUTO_TRANSLATE_MODE_DISABLED
 	for i in range(3):
 		var p := Vector2(83,31+i*25)
-		status_art(player_status,"04_bar_track.png",p,Vector2(261,24))
+		status_art(player_status,["04_bar_track.png","10_mp_track.png","11_exp_track.png"][i],p,Vector2(261,24))
 		var clip := Control.new()
 		clip.mouse_filter=Control.MOUSE_FILTER_IGNORE
 		clip.clip_contents=true
@@ -437,7 +439,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.38"%game.coins
+	stats.text="Gold %d   v0.1.39"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -449,7 +451,7 @@ func build_target_status():
 	root.add_child(target_status)
 	target_status.position=Vector2(430,12)
 	target_status.size=Vector2(410,113)
-	target_portrait_art=status_art(target_status,"01_portrait_frame.png",Vector2.ZERO,Vector2(72,72))
+	target_portrait_art=status_art(target_status,"target_normal_ring.png",Vector2.ZERO,Vector2(72,72))
 	target_portrait_image=TextureRect.new()
 	target_portrait_image.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 	target_portrait_image.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -486,7 +488,7 @@ func build_target_status():
 	target_bar.add_child(target_fill)
 	target_fill.position=Vector2(20,6)
 	target_fill.size=Vector2(290,16)
-	status_art(target_fill,"05_hp_fill.png",Vector2.ZERO,Vector2(290,16))
+	status_art(target_fill,"target_hp_fill.png",Vector2.ZERO,Vector2(290,16))
 	target_hp=status_text(target_bar,Vector2.ZERO,Vector2(330,28),14)
 	target_bar.hide()
 	target_menu_button=target_action_button(target_status,"",Vector2(17,74),Vector2(38,38),func():target_menu.visible=not target_menu.visible)
@@ -558,6 +560,7 @@ func refresh_target_status(safe: bool):
 	target_menu_button.visible=show_player
 	if not show_player: target_menu.hide()
 	if valid and portrait_source_id!=n.get_instance_id():
+		target_portrait_art.texture=load(PLAYER_HUD+["target_normal_ring.png","target_elite_ring.png","target_boss_ring.png"][clampi(int(n.get_meta("tier",0)),0,2)])
 		portrait_source_id=n.get_instance_id()
 		target_menu.hide()
 		if is_instance_valid(target_model): target_model.queue_free()
@@ -851,7 +854,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.38","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.39","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -1199,7 +1202,7 @@ func build_quick_menu():
 			b.icon=load(UHD+key.to_lower()+".png")
 		b.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
 		b.vertical_icon_alignment=VERTICAL_ALIGNMENT_TOP
-		b.add_theme_constant_override("icon_max_width",38)
+		b.add_theme_constant_override("icon_max_width",48)
 		b.add_theme_font_size_override("font_size",16)
 		b.pressed.connect(func():open_page(key))
 		row.add_child(b)
@@ -1556,6 +1559,9 @@ func open_page(page:String):
 	if page in INVENTORY_PAGES:
 		for key in INVENTORY_PAGES:
 			var tab: Button=add_button(header,trn(key),func():open_page(key))
+			if key!="Character":
+				tab.icon=load("res://assets/menu_icons/"+key.to_lower()+".png")
+				tab.add_theme_constant_override("icon_max_width",26)
 			tab.custom_minimum_size=Vector2(110,44)
 			if key==page: tab.add_theme_color_override("font_color",Color("ff9c8e"))
 	language_menu(header,page)
