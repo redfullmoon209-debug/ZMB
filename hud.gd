@@ -15,6 +15,7 @@ var captured_touches: Dictionary = {}
 var joystick_finger := -1
 var web_bridge_ready := false
 var web_diagnostics := false
+var diagnostic_timer := 0.0
 var web_drag_positions: Dictionary = {}
 var start_button: Button
 var config := ConfigFile.new()
@@ -163,7 +164,7 @@ func _install_web_touch():
 	})();
 	""", true)
 	web_bridge_ready = installed == true and JavaScriptBridge.eval("typeof window.zmbTouchDrain === 'function'", true) == true
-	web_diagnostics = JavaScriptBridge.eval("new URLSearchParams(location.search).has('zmbtest')", true) == true
+	web_diagnostics = OS.has_feature("web")
 	if not web_bridge_ready:
 		return
 	JavaScriptBridge.eval("window.zmbTouchReady = true", true)
@@ -298,7 +299,7 @@ func _notification(what: int):
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and is_instance_valid(game):
 		_reset_touches()
 
-func _process(_delta):
+func _process(delta):
 	if not is_instance_valid(stats): return
 	_poll_web_touch()
 	stats.text="ZMB v0.1.3  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
@@ -307,7 +308,9 @@ func _process(_delta):
 	else: target_label.text="ZMB  •  OFFLINE DEMO"
 	if game.hp<=0 and game.started and not is_instance_valid(panel): open_page("Revive")
 	# Read-only local gameplay diagnostics used by the exported-Web smoke test.
-	if web_diagnostics:
+	diagnostic_timer -= delta
+	if web_diagnostics and diagnostic_timer <= 0:
+		diagnostic_timer = 0.10
 		var controls := {}
 		for b in buttons: controls[b.text] = _web_rect(b)
 		if is_instance_valid(start_button): controls["START"] = _web_rect(start_button)

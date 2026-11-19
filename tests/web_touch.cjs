@@ -17,11 +17,14 @@ const server = http.createServer((req, res) => {
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const browser = await chromium.launch({headless:true,executablePath:process.env.ZMB_BROWSER_PATH || undefined,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  const page = await browser.newPage({viewport:{width:932,height:430},deviceScaleFactor:1,isMobile:true,hasTouch:true});
   try {
-    const page = await browser.newPage({viewport:{width:932,height:430},deviceScaleFactor:2,isMobile:true,hasTouch:true});
-    page.on('console', msg => { if (msg.type() === 'error') console.log('BROWSER:',msg.text()); });
+    page.on('console', msg => console.log('BROWSER:',msg.type(),msg.text()));
     page.on('pageerror', err => console.log('BROWSER ERROR:',err.message));
+    page.on('requestfailed', req => console.log('REQUEST FAILED:',req.url(), req.failure()));
+    page.on('response', res => {if(res.status() >= 400) console.log('HTTP ERROR:',res.status(),res.url());});
     await page.goto(`http://127.0.0.1:${server.address().port}/?zmbtest=1`);
+    console.log('Page loaded:',await page.title(),await page.locator('body').innerText());
     await page.waitForFunction(() => window.zmbDiagnostics?.version === '0.1.3' && window.zmbDiagnostics.controls.START, null, {timeout:60000});
     const diag = () => page.evaluate(() => window.zmbDiagnostics);
     const initial = await diag();
@@ -46,5 +49,8 @@ const server = http.createServer((req, res) => {
     console.log('PASS: actual Godot Web build moves and jumps with two simultaneous browser touches');
     await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     await page.waitForFunction(() => window.zmbDiagnostics.stick[0]===0&&window.zmbDiagnostics.stick[1]===0);
+  } catch (error) {
+    console.log('Failure state:',await page.evaluate(()=>({body:document.body.innerText,diagnostics:window.zmbDiagnostics,bridge:typeof window.zmbTouchDrain,webgl2:!!document.createElement('canvas').getContext('webgl2'),canvas:document.querySelector('canvas')?.getBoundingClientRect().toJSON()})));
+    throw error;
   } finally { await browser.close(); server.close(); }
 })().catch(e=>{console.error(e);server.close();process.exitCode=1;});
