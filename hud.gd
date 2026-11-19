@@ -102,14 +102,14 @@ func _ready():
 	for state in ["normal","hover","pressed","focus"]:
 		joystick.add_theme_stylebox_override(state,StyleBoxEmpty.new())
 	var joystick_base := TextureRect.new()
-	joystick_base.texture=preload("res://assets/controls/joystick_base.png")
+	joystick_base.texture=preload("res://assets/controls/joystick_base_gray.svg")
 	joystick_base.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 	joystick_base.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	joystick_base.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	joystick.add_child(joystick_base)
 	joystick_base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	joystick_knob=TextureRect.new()
-	joystick_knob.texture=preload("res://assets/controls/joystick_thumb.png")
+	joystick_knob.texture=preload("res://assets/controls/joystick_thumb_gray.svg")
 	joystick_knob.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 	joystick_knob.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	joystick_knob.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -361,7 +361,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.14  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.15  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -381,7 +381,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.14","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.15","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
