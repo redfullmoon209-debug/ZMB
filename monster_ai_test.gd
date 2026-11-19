@@ -14,6 +14,13 @@ func run():
 	enemy.position=Vector3(0,0,-25)
 	enemy.set_meta("home",enemy.position)
 	world.player.position=Vector3(0,0,-20)
+	var auto_button: Button=world.ui.editable_hud["AUTO"]
+	auto_button.pressed.emit()
+	world.ui.update_auto_hunt_indicator(0.25)
+	assert(world.auto and world.ui.auto_hunt_art.rotation>0 and auto_button.rotation==0)
+	auto_button.pressed.emit()
+	world.ui.update_auto_hunt_indicator(0.25)
+	assert(not world.auto and world.ui.auto_hunt_art.rotation==0)
 	var before: Vector3=enemy.position
 	for i in range(30): await physics_frame
 	assert(enemy.position.distance_to(world.player.position)<before.distance_to(world.player.position))

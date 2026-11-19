@@ -16,6 +16,15 @@ const PLAYER_HUD = "res://assets/player_hud/"
 const Catalog = preload("res://item_catalog.gd")
 var item_dialog: AcceptDialog
 var damage_overlays: Dictionary = {}
+var auto_hunt_art: TextureRect
+
+func update_auto_hunt_indicator(delta: float):
+	if not is_instance_valid(auto_hunt_art): return
+	auto_hunt_art.pivot_offset=auto_hunt_art.size*0.5
+	if game.auto and game.started and game.hp>0 and not game.in_safe_zone():
+		auto_hunt_art.rotation=fposmod(auto_hunt_art.rotation+delta*TAU/1.8,TAU)
+	else:
+		auto_hunt_art.rotation=0.0
 var cooldown_labels: Array[Label] = []
 
 func update_combat_cooldowns():
@@ -281,7 +290,9 @@ func _ready():
 	make_button("RUN",Vector2(940,535),Vector2(64,64),func():game.toggle_run())
 	make_button("LOOT",Vector2(1014,80),Vector2(70,70),func():game.collect())
 	make_button("AUTO",Vector2(1204,338),Vector2(70,70),func():
-		if not game.in_safe_zone(): game.auto=not game.auto)
+		if not game.in_safe_zone():
+			game.auto=not game.auto
+			if not game.auto: game.cancel_attack())
 	make_button("MONSTER",Vector2(1120,270),Vector2(54,54),func():game.choose_target())
 	make_button("PLAYER",Vector2(1200,270),Vector2(54,54),func():game.choose_player_target())
 	make_button("HP",Vector2(888,634),Vector2(64,64),func():game.hp=minf(game.max_hp(),game.hp+35))
@@ -426,7 +437,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.37"%game.coins
+	stats.text="Gold %d   v0.1.38"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -616,6 +627,7 @@ func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 		art.offset_top=5
 		art.offset_right=-5
 		art.offset_bottom=-5
+		if t=="AUTO": auto_hunt_art=art
 		b.tooltip_text=t
 	b.pressed.connect(action)
 	if t=="ATTACK" or t.begins_with("SKILL "):
@@ -804,6 +816,7 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
+	update_auto_hunt_indicator(delta)
 	update_combat_cooldowns()
 	update_damage_overlays()
 	if is_instance_valid(gm_button):
@@ -838,7 +851,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.37","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.38","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -1317,7 +1330,9 @@ func build_settings(parent: VBoxContainer):
 			var auto_check := CheckButton.new()
 			auto_check.text="Auto Hunt"
 			auto_check.button_pressed=game.auto
-			auto_check.toggled.connect(func(v):game.auto=v and not game.in_safe_zone())
+			auto_check.toggled.connect(func(v):
+				game.auto=v and not game.in_safe_zone()
+				if not game.auto: game.cancel_attack())
 			content.add_child(auto_check)
 			setting_toggle(content,localized("เก็บของอัตโนมัติขณะ Auto Hunt","Auto loot while hunting","自动拾取"),"auto_loot",true)
 			setting_toggle(content,localized("เลือกเป้าหมายใกล้สุดเสมอ","Always select nearest target","优先最近目标"),"nearest",false)
