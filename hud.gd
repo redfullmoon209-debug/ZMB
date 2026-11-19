@@ -13,6 +13,9 @@ var buttons: Array[Button] = []
 var touch_actions: Dictionary = {}
 var captured_touches: Dictionary = {}
 var joystick_finger := -1
+var web_callback: JavaScriptObject
+var web_window: JavaScriptObject
+var web_drag_positions: Dictionary = {}
 var config := ConfigFile.new()
 var names := {"Bag":["กระเป๋า","Bag","背包"],"Storage":["คลัง","Storage","仓库"],"Character":["ตัวละคร","Character","角色"],"Skills":["สกิล","Skills","技能"],"Market":["ตลาดโลก","Market","市场"],"Shop":["ร้านค้า","Shop","商店"],"Quest":["เควส","Quest","任务"],"Social":["สังคม","Social","社交"],"Ranking":["อันดับ","Ranking","排行"],"News":["ประกาศ","News","公告"],"Settings":["ตั้งค่า","Settings","设置"],"Trade":["แลกเปลี่ยน","Trade","交易"],"Map":["แผนที่","Map","地图"]}
 
@@ -73,6 +76,8 @@ func _ready():
 	chat.text_submitted.connect(func(_s): chat.clear(); chat.release_focus())
 	root.add_child(chat)
 	open_page("Start")
+	if OS.has_feature("web"):
+		_install_web_touch()
 
 func label(t: String,p:Vector2,s:Vector2) -> Label:
 	var l := Label.new()
@@ -107,6 +112,132 @@ func _set_touch_stick(pos: Vector2):
 	var rect := joystick.get_global_rect()
 	game.stick = ((pos - rect.get_center()) / maxf(1.0, minf(rect.size.x, rect.size.y) * 0.46)).limit_length()
 
+func _install_web_touch():
+	# Handle the browser's real TouchEvent.changedTouches before the engine's
+	# canvas/mouse handlers. Safari and Chrome can otherwise collapse touches
+	# into one emulated mouse button; the joystick must keep its own identity.
+	web_window = JavaScriptBridge.get_interface("window")
+	web_callback = JavaScriptBridge.create_callback(_web_touch)
+	web_window.zmbTouchCallback = web_callback
+	JavaScriptBridge.eval("""
+	(() => {
+	  const canvas = document.querySelector('canvas');
+	  if (!canvas || window.zmbTouchInstalled) return;
+	  window.zmbTouchInstalled = true;
+	  canvas.style.touchAction = 'none';
+	  const active = new Set();
+	  const route = (event) => {
+	    const phase = event.type.slice(5);
+	    const rect = canvas.getBoundingClientRect();
+	    const queue = [];
+	    for (const touch of Array.from(event.changedTouches)) {
+	      const id = touch.identifier;
+	      const x = (touch.clientX - rect.left) / rect.width;
+	      const y = (touch.clientY - rect.top) / rect.height;
+	      if (phase === 'start') {
+	        if (!window.zmbGameplay || touch.target !== canvas) continue;
+	        const c = window.zmbChatRect;
+	        if (c && x >= c[0] && x <= c[2] && y >= c[1] && y <= c[3]) continue;
+	        active.add(id);
+	      } else if (!active.has(id)) continue;
+	      queue.push([phase, id, x, y]);
+	      if (phase === 'end' || phase === 'cancel') active.delete(id);
+	    }
+	    if (!queue.length) return;
+	    if (event.cancelable) event.preventDefault();
+	    event.stopImmediatePropagation();
+	    for (const args of queue) window.zmbTouchCallback(...args);
+	  };
+	  for (const type of ['touchstart','touchmove','touchend','touchcancel']) {
+	    window.addEventListener(type, route, {capture:true, passive:false});
+	  }
+	  const reset = () => {
+	    active.clear();
+	    window.zmbTouchCallback('reset', -1, 0, 0);
+	  };
+	  window.addEventListener('blur', reset);
+	  document.addEventListener('visibilitychange', () => { if(document.hidden) reset(); });
+	})();
+	""", true)
+	_sync_web_touch()
+	get_viewport().size_changed.connect(_sync_web_touch)
+
+func _sync_web_touch():
+	if web_window == null:
+		return
+	web_window.zmbGameplay = game.started and not is_instance_valid(panel)
+	var vp := get_viewport().get_visible_rect().size
+	var rect := chat.get_global_rect()
+	if vp.x > 0 and vp.y > 0:
+		JavaScriptBridge.eval("window.zmbChatRect = [%f,%f,%f,%f]" % [rect.position.x / vp.x, rect.position.y / vp.y, rect.end.x / vp.x, rect.end.y / vp.y], true)
+
+func _web_touch(args: Array):
+	if args.size() < 4:
+		return
+	var phase := str(args[0])
+	var index := int(args[1])
+	var pos := Vector2(float(args[2]), float(args[3])) * get_viewport().get_visible_rect().size
+	match phase:
+		"start":
+			if not _touch_start(index, pos):
+				web_drag_positions[index] = pos
+		"move":
+			if not _touch_move(index, pos) and web_drag_positions.has(index):
+				var previous: Vector2 = web_drag_positions[index]
+				if pos.x > get_viewport().get_visible_rect().size.x * 0.35:
+					game.yaw -= (pos.x - previous.x) * 0.007
+				web_drag_positions[index] = pos
+		"end", "cancel":
+			_touch_end(index)
+			web_drag_positions.erase(index)
+		"reset":
+			_reset_touches()
+
+func _touch_start(index: int, pos: Vector2) -> bool:
+	if is_instance_valid(panel) or not game.started:
+		return false
+	for i in range(buttons.size()-1, -1, -1):
+		var button := buttons[i]
+		if not button.is_visible_in_tree() or button.disabled or not button.get_global_rect().has_point(pos):
+			continue
+		captured_touches[index] = button
+		if button == joystick:
+			if joystick_finger == -1:
+				joystick_finger = index
+				_set_touch_stick(pos)
+		else:
+			var action: Callable = touch_actions[button]
+			action.call()
+		return true
+	if not chat.get_global_rect().has_point(pos):
+		var nearest := 65.0
+		for enemy in game.enemies:
+			if game.camera.is_position_behind(enemy.position): continue
+			var distance: float = game.camera.unproject_position(enemy.position + Vector3.UP).distance_to(pos)
+			if distance < nearest:
+				nearest = distance
+				game.target = enemy
+	return false
+
+func _touch_move(index: int, pos: Vector2) -> bool:
+	if not captured_touches.has(index): return false
+	if index == joystick_finger: _set_touch_stick(pos)
+	return true
+
+func _touch_end(index: int) -> bool:
+	if not captured_touches.has(index): return false
+	captured_touches.erase(index)
+	if index == joystick_finger:
+		joystick_finger = -1
+		game.stick = Vector2.ZERO
+	return true
+
+func _reset_touches():
+	captured_touches.clear()
+	web_drag_positions.clear()
+	joystick_finger = -1
+	game.stick = Vector2.ZERO
+
 func _input(event: InputEvent):
 	if not is_instance_valid(joystick):
 		return
@@ -118,52 +249,21 @@ func _input(event: InputEvent):
 		return
 	if event is InputEventScreenTouch:
 		if not event.pressed or event.canceled:
-			if captured_touches.has(event.index):
-				captured_touches.erase(event.index)
-				if event.index == joystick_finger:
-					joystick_finger = -1
-					game.stick = Vector2.ZERO
+			if _touch_end(event.index):
 				get_viewport().set_input_as_handled()
 			return
-		if is_instance_valid(panel) or not game.started:
-			return
-		# Reverse order matches the HUD's drawing order if controls overlap.
-		for i in range(buttons.size()-1, -1, -1):
-			var button := buttons[i]
-			if not button.is_visible_in_tree() or button.disabled or not button.get_global_rect().has_point(event.position):
-				continue
-			captured_touches[event.index] = button
+		if _touch_start(event.index, event.position):
 			get_viewport().set_input_as_handled()
-			if button == joystick:
-				if joystick_finger == -1:
-					joystick_finger = event.index
-					_set_touch_stick(event.position)
-			else:
-				var action: Callable = touch_actions[button]
-				action.call()
-			return
-		if not chat.get_global_rect().has_point(event.position):
-			var nearest := 65.0
-			for enemy in game.enemies:
-				if game.camera.is_position_behind(enemy.position): continue
-				var distance: float = game.camera.unproject_position(enemy.position + Vector3.UP).distance_to(event.position)
-				if distance < nearest:
-					nearest = distance
-					game.target = enemy
-	elif event is InputEventScreenDrag and captured_touches.has(event.index):
-		if event.index == joystick_finger:
-			_set_touch_stick(event.position)
-		get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag:
+		if _touch_move(event.index, event.position): get_viewport().set_input_as_handled()
 
 func _notification(what: int):
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and is_instance_valid(game):
-		captured_touches.clear()
-		joystick_finger = -1
-		game.stick = Vector2.ZERO
+		_reset_touches()
 
 func _process(_delta):
 	if not is_instance_valid(stats): return
-	stats.text="ZMB  |  LV %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.2  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	if is_instance_valid(game.target): target_label.text="%s • HP %d"%[["Normal","Elite","Boss"][game.target.get_meta("tier")],game.target.get_meta("hp")]
 	elif game.auto: target_label.text="AUTO HUNT"
 	else: target_label.text="ZMB  •  OFFLINE DEMO"
@@ -173,6 +273,7 @@ func close_page():
 	if is_instance_valid(panel): panel.queue_free()
 	panel=null
 	selected_page=""
+	_sync_web_touch()
 
 func add_button(parent:Node,t:String,action:Callable):
 	var b := Button.new()
@@ -206,6 +307,7 @@ func open_page(page:String):
 	selected_page=page
 	panel=PanelContainer.new()
 	root.add_child(panel)
+	_sync_web_touch()
 	panel.position=Vector2(175,100)
 	panel.size=Vector2(930,520)
 	panel.z_index=10
