@@ -161,6 +161,47 @@ func run():
 			break
 	assert(world.player.position.distance_to(Vector3(0,0,-11))<0.1)
 	print("PASS: social tabs, trade slots, market escrow/cancel and safe-zone warp")
+	assert(world.gm_allowed() and is_instance_valid(hud.gm_button))
+	hud.gm_button.pressed.emit()
+	await process_frame
+	assert(hud.selected_page=="GM")
+	assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+	var old_gold: int=world.coins
+	assert(world.gm_execute("gold",100) and world.coins==old_gold+100)
+	assert(world.gm_execute("gold",-100) and world.coins==old_gold)
+	assert(world.gm_execute("item",1,"Spirit shard"))
+	assert(world.gm_execute("item",-1,"Spirit shard"))
+	assert(world.gm_execute("move_speed",2) and world.gm_move_multiplier==2)
+	assert(world.gm_execute("move_speed",1))
+	assert(world.gm_execute("invincible",1) and world.gm_invincible)
+	assert(world.gm_execute("invincible",0))
+	assert(world.gm_execute("invisible",1) and not world.player_visual.visible)
+	assert(world.gm_execute("invisible",0))
+	world.gm_target=world.enemies[0]
+	var monster: Node3D=world.gm_target
+	assert(world.gm_execute("kill") and not world.enemies.has(monster))
+	assert(world.gm_execute("revive") and world.enemies.has(monster))
+	world.gm_target=null
+	assert(world.gm_execute("kill") and world.hp==0)
+	assert(world.gm_execute("revive") and world.hp==100)
+	var count: int=world.enemies.size()
+	assert(world.gm_execute("spawn",2) and world.enemies.size()==count+1)
+	assert(world.gm_execute("event",1) and world.gm_event_active)
+	assert(world.gm_execute("announce",0,"Test GM") and world.gm_announcement=="Test GM")
+	hud.gm_tab=1
+	for category in range(6):
+		hud.gm_server_tab=category
+		hud.open_page("GM")
+		await process_frame
+		assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+	ProjectSettings.set_setting("zmb/offline_gm_test",false)
+	assert(not world.gm_allowed() and not world.gm_execute("gold",9999))
+	hud.close_page()
+	hud.open_page("GM")
+	await process_frame
+	assert(hud.selected_page=="" and not hud.gm_button.visible)
+	ProjectSettings.set_setting("zmb/offline_gm_test",true)
+	print("PASS: separate GM icon, local commands, monster kill/revive and release gate")
 	print("PASS: news, ranking, 50-slot shops and local gold purchase")
 	print("PASS: seven categories, camera setting, HUD drag and cancel")
 	print("PASS: all ten right-to-left menu icons visible, selecting a category and dragging long menus works")

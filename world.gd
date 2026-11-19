@@ -47,6 +47,17 @@ var previous_play_seconds := 0
 var first_play_unix := 0
 var playtime_save_timer := 0.0
 var monsters_defeated := 0
+var gm_test_enabled := false
+var gm_target: Node3D
+var gm_attack_power := 15.0
+var gm_defense := 0.0
+var gm_move_multiplier := 1.0
+var gm_attack_multiplier := 1.0
+var gm_invincible := false
+var gm_invisible := false
+var gm_logs: Array[String] = []
+var gm_event_active := false
+var gm_announcement := ""
 var shards_collected := 0
 var quest_claimed: Dictionary = {}
 var daily_bosses := 0
@@ -54,6 +65,103 @@ var daily_day := ""
 var daily_claimed := false
 var daily_config := ConfigFile.new()
 var playtime_config := ConfigFile.new()
+
+func gm_allowed() -> bool:
+	# Offline demo only. Real account authorization must never use this flag.
+	return gm_test_enabled and bool(ProjectSettings.get_setting("zmb/offline_gm_test",false))
+
+func gm_execute(command: String, value: float=0, item: String="") -> bool:
+	if not gm_allowed() or not started: return false
+	var locked := is_instance_valid(gm_target)
+	var amount := int(value)
+	match command:
+		"gold":
+			if locked: return false
+			coins=clampi(coins+amount,0,100000000)
+		"exp":
+			if locked: return false
+			var total:=clampi((level-1)*100+xp+amount,0,99999)
+			level=int(total/100.0)+1
+			xp=total%100
+		"level":
+			if locked: return false
+			level=clampi(level+amount,1,1000)
+		"hp":
+			if locked: gm_target.set_meta("hp",clampf(float(gm_target.get_meta("hp"))+value,0,40+80*int(gm_target.get_meta("tier"))))
+			else: hp=clampf(hp+value,0,100)
+		"mp":
+			if locked: return false
+			mp=clampf(mp+value,0,100)
+		"attack":
+			if locked: return false
+			gm_attack_power=clampf(gm_attack_power+value,0,100000)
+		"defense":
+			if locked: return false
+			gm_defense=clampf(gm_defense+value,0,100000)
+		"move_speed":
+			if locked: return false
+			gm_move_multiplier=clampf(value,0.25,5)
+		"attack_speed":
+			if locked: return false
+			gm_attack_multiplier=clampf(value,0.25,5)
+		"item":
+			if locked or item not in ["HP Potion","MP Potion","Spirit shard"]: return false
+			if amount>0:
+				if items.size()+amount>48: return false
+				for i in range(amount): items.append(item)
+			else:
+				if items.count(item)<-amount: return false
+				for i in range(-amount): items.erase(item)
+			if is_instance_valid(ui):
+				ui.trade_selected.clear()
+				ui.market_selected=-1
+		"warp":
+			var points: Array[Vector3]=[Vector3.ZERO,Vector3(0,0,-11),Vector3(11,0,0),Vector3(0,0,11),Vector3(-11,0,0),Vector3(0,0,-24),Vector3(0,0,-32),Vector3(0,0,-39)]
+			if amount<0 or amount>=points.size(): return false
+			player.position=points[amount]
+			player.velocity=Vector3.ZERO
+		"warp_target":
+			if not locked: return false
+			player.position=gm_target.position+Vector3(0,0,2)
+			player.velocity=Vector3.ZERO
+		"kill":
+			if locked:
+				gm_target.set_meta("gm_saved_hp",gm_target.get_meta("hp"))
+				gm_target.set_meta("hp",0.0)
+				enemies.erase(gm_target)
+				gm_target.hide()
+				if target==gm_target: target=null
+			else: hp=0;auto=false
+		"revive":
+			if locked:
+				gm_target.set_meta("hp",float(40+80*int(gm_target.get_meta("tier"))))
+				if not enemies.has(gm_target): enemies.append(gm_target)
+				gm_target.show()
+			else: revive()
+		"invincible":
+			if locked: return false
+			gm_invincible=value>0
+		"invisible":
+			if locked: return false
+			gm_invisible=value>0
+			player_visual.visible=not gm_invisible
+		"spawn":
+			if amount<0 or amount>2 or enemies.size()>=100: return false
+			spawn_enemy(100+gm_logs.size(),amount)
+		"remove":
+			if not locked: return false
+			enemies.erase(gm_target)
+			if target==gm_target: target=null
+			gm_target.queue_free()
+			gm_target=null
+		"event": gm_event_active=value>0
+		"announce":
+			if item.strip_edges().is_empty(): return false
+			gm_announcement=item.strip_edges().left(180)
+		_: return false
+	gm_logs.push_front("%s UTC | %s | %s | %s"%[Time.get_datetime_string_from_system(true),command,str(value),item.left(180)])
+	if gm_logs.size()>100: gm_logs.resize(100)
+	return true
 
 func session_seconds() -> int:
 	return 0 if session_started_msec<0 else int((Time.get_ticks_msec()-session_started_msec)/1000.0)
@@ -72,6 +180,7 @@ func _notification(what: int):
 		save_playtime()
 
 func _ready():
+	gm_test_enabled=bool(ProjectSettings.get_setting("zmb/offline_gm_test",false))
 	daily_config.load("user://zmb_daily.cfg")
 	daily_day=str(daily_config.get_value("daily","day",""))
 	daily_bosses=int(daily_config.get_value("daily","bosses",0))
@@ -221,10 +330,10 @@ func figure(parent: Node3D,color: Color) -> Node3D:
 	box(Vector3(0.55,0.85,0.1),Vector3(0.12,0.95,0.12),Color("aebac3"),n)
 	return n
 
-func spawn_enemy(i: int):
+func spawn_enemy(i: int, forced_tier: int=-1):
 	var n := Node3D.new()
 	add_child(n)
-	var tier := 2 if i==11 else (1 if i%4==0 else 0)
+	var tier := forced_tier if forced_tier>=0 else (2 if i==11 else (1 if i%4==0 else 0))
 	var angle := float(i)*2.39996
 	var distance := 24.0 if tier==0 else (32.0 if tier==1 else 39.0)
 	n.position = Vector3(sin(angle)*distance,0,cos(angle)*distance)
@@ -271,13 +380,13 @@ func attack(skill: int):
 	if player.position.distance_to(target.position)>ranges[weapon]+skill: return
 	if mp < skill*5: return
 	mp -= skill*5
-	cooldown = 0.45+skill*0.2
+	cooldown = (0.45+skill*0.2)/gm_attack_multiplier
 	var hits := [target]
 	if skill==3:
 		for n in enemies:
 			if n!=target and n.position.distance_to(target.position)<3: hits.append(n)
 	for n in hits:
-		n.set_meta("hp",float(n.get_meta("hp"))-15-skill*7)
+		n.set_meta("hp",float(n.get_meta("hp"))-gm_attack_power-skill*7)
 		if n.get_meta("hp")<=0:
 			monsters_defeated+=1
 			if int(n.get_meta("tier"))==2:
@@ -294,7 +403,8 @@ func attack(skill: int):
 			n.queue_free()
 			if n==target: target=null
 			var spawn_index: int = n.get_meta("spawn_index")
-			get_tree().create_timer(5).timeout.connect(func(): spawn_enemy(spawn_index))
+			var spawn_tier: int=int(n.get_meta("tier"))
+			get_tree().create_timer(5).timeout.connect(func(): spawn_enemy(spawn_index,spawn_tier))
 
 func collect():
 	for d in loot.duplicate():
@@ -468,7 +578,7 @@ func _physics_process(delta: float):
 			if diff.length()>2.2: move=Vector3(diff.x,0,diff.z).normalized()
 			else: attack(0)
 		if auto_loot: collect()
-	var speed := 8.0 if run_mode else 4.5
+	var speed := (8.0 if run_mode else 4.5)*gm_move_multiplier
 	if dash_time>0: speed=18
 	player.velocity.x=move.x*speed
 	player.velocity.z=move.z*speed
@@ -493,8 +603,9 @@ func _physics_process(delta: float):
 			if not is_safe_position(returning,0.6): n.position=returning
 			continue
 		var diff := player.position-n.position
+		if gm_invisible: continue
 		if diff.length()<10 and diff.length()>1.6:
 			var next := n.position+Vector3(diff.x,0,diff.z).normalized()*delta*1.5
 			if not is_safe_position(next,0.6): n.position=next
-		elif diff.length()<=1.6: hp=maxf(0,hp-delta*4)
+		elif diff.length()<=1.6 and not gm_invincible: hp=maxf(0,hp-delta*maxf(0,4-gm_defense))
 	update_camera(delta)

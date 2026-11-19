@@ -12,3 +12,20 @@ The Godot Web demo has no authentication or dedicated server. `account_audit.sql
 6. The character UI receives account creation, first/last login, and verified total seconds from an authenticated read-only endpoint. GM review compares recorded age, online hours, EXP per hour, level progression, and legitimate rewards. Flag impossible or unusual rates for review; short playtime alone never proves cheating. Thresholds must be calibrated after the actual leveling curve and events are implemented.
 
 No credentials or GM permissions are embedded in the Web client. Deploy the schema and authenticated server separately before public online play.
+
+## GM release gate
+
+The current offline prototype explicitly enables `zmb/offline_gm_test` in
+`project.godot`. It is a local sandbox, not an account permission. Before
+publishing an online/player build, set this flag to false (missing also means
+false) and reject local test commands. The public client must never grant GM
+permissions based on an email supplied by the browser.
+
+For the live backend, configure the owner's exact verified email in a
+server-only allowlist, require an authenticated account with verified email and
+an explicit owner role, and check both on every command. Return the capability
+from the authenticated session endpoint only to the authorized owner. Record
+the actor, target, timestamp, command, before/after values and outcome in the
+server audit log. No owner email, password, token or allowlist belongs in the
+client. Do not enable the online GM interface until these checks are deployed
+and tested with non-owner accounts.

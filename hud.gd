@@ -32,6 +32,11 @@ var swallow_scroll_release := false
 var menu_items: Dictionary = {}
 var settings_category := 0
 var news_tab := 0
+var gm_tab := 0
+var gm_server_tab := 0
+var gm_button: Button
+var gm_notice: Label
+const GM_PAGE=preload("res://gm_page.gd")
 var social_tab := 0
 var social_sub := 0
 var social_split := 0
@@ -158,6 +163,16 @@ func _ready():
 	zone_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	zone_label.add_theme_font_size_override("font_size",21)
 	make_button("MENU",Vector2(970,18),Vector2(120,48),func(): open_page("Menu"))
+	if game.gm_allowed():
+		gm_button=make_button("GM",Vector2(895,18),Vector2(64,48),func():
+			if is_instance_valid(game.target): game.gm_target=game.target
+			open_page("GM"))
+		gm_button.icon=preload("res://assets/menu_icons/gm.svg")
+		gm_button.add_theme_font_size_override("font_size",12)
+		gm_button.expand_icon=true
+		gm_notice=label("",Vector2(380,112),Vector2(500,35))
+		gm_notice.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		gm_notice.add_theme_color_override("font_color",Color("f6d995"))
 	minimap=preload("res://minimap.gd").new()
 	minimap.game=game
 	minimap.position=Vector2(1105,12)
@@ -256,7 +271,7 @@ func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	b.size=config.get_value("size",t,s)
 	b.scale=config.get_value("scale",t,Vector2.ONE)
 	b.modulate.a=config.get_value("opacity",t,0.82)
-	if t not in ["MENU","CAMERA"]:
+	if t not in ["MENU","CAMERA","GM"]:
 		b.set_meta("round",true)
 		var round_style := StyleBoxFlat.new()
 		round_style.bg_color=Color("252a2e99")
@@ -467,6 +482,9 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
+	if is_instance_valid(gm_button):
+		gm_button.visible=game.gm_allowed()
+		gm_notice.text=game.gm_announcement if game.gm_allowed() else ""
 	if selected_page=="Quest": update_quest_ui()
 	if is_instance_valid(quest_tracker):
 		quest_tracker.visible=not tracked_quest.is_empty() or is_instance_valid(editor_panel)
@@ -480,7 +498,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.22  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.23  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -500,7 +518,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.22","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.23","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -715,11 +733,11 @@ func refresh_character_details():
 		"hp":"%d / 100"%game.hp,
 		"mp":"%d / 100"%game.mp,
 		"xp":"%d / 100"%game.xp,
-		"attack":"15",
-		"defense":"—",
+		"attack":str(game.gm_attack_power),
+		"defense":str(game.gm_defense),
 		"range":"%.1f m"%[2.7,5.5,12.0][game.weapon],
-		"attack_speed":"%.2f / s"%(1.0/0.45),
-		"movement":"%.1f m/s"%(18.0 if game.dash_time>0 else (8.0 if game.run_mode else 4.5)),
+		"attack_speed":"%.2f / s"%(game.gm_attack_multiplier/0.45),
+		"movement":"%.1f m/s"%(18.0 if game.dash_time>0 else (8.0 if game.run_mode else 4.5)*game.gm_move_multiplier),
 		"kills":str(game.monsters_defeated),
 		"gold":str(game.coins),
 		"session":format_playtime(game.session_seconds()),
@@ -1101,6 +1119,7 @@ func editor_input(event: InputEvent) -> bool:
 	return true
 
 func open_page(page:String):
+	if page=="GM" and not game.gm_allowed(): return
 	if page=="Menu" and selected_page=="Menu":
 		close_page()
 		return
@@ -1119,7 +1138,7 @@ func open_page(page:String):
 	if page in INVENTORY_PAGES:
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
-	if page in ["Settings","News","Ranking","Shop","Quest","Social","Trade","Market","Map"]:
+	if page in ["Settings","News","Ranking","Shop","Quest","Social","Trade","Market","Map","GM"]:
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
 	panel.z_index=10
@@ -1173,6 +1192,7 @@ func open_page(page:String):
 	content.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	scroll.add_child(content)
 	match page:
+		"GM": GM_PAGE.build(self,content)
 		"Start":
 			add_text(content,"ZMB • SPIRIT PLAGUE\nAncient China | Offline prototype\nSelect a character to enter the village.")
 			start_button=add_button(content,"Male warrior",func():game.begin(true);close_page())
