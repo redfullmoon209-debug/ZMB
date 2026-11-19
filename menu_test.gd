@@ -13,7 +13,10 @@ func run():
 	assert(mini_rect.end.x<=1280 and mini_rect.position.y>=0)
 	assert(hud.camera_mode_button.get_global_rect().position.y>mini_rect.end.y)
 	for b in hud.buttons:
-		assert(not mini_rect.intersects(b.get_global_rect()))
+		if b.text in ["+","−"]:
+			assert(mini_rect.encloses(b.get_global_rect()))
+			assert(b.get_global_rect().position.y==mini_rect.position.y)
+		else: assert(not mini_rect.intersects(b.get_global_rect()))
 		if b.get_meta("hud_key")=="MENU":
 			assert(b.get_global_rect().end.x<mini_rect.position.x)
 	assert(hud.minimap.map_point(Vector3(10,0,0)).x>hud.minimap.map_point(Vector3.ZERO).x)
