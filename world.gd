@@ -23,6 +23,7 @@ var cooldown := 0.0
 var yaw := 0.0
 var pitch := deg_to_rad(28.0)
 var zoom := 10.0
+var camera_arm_distance := -1.0
 var camera_follow := false
 var follow_input_active := false
 var follow_input_yaw := 0.0
@@ -325,10 +326,17 @@ func update_camera(delta: float):
 	var ray := PhysicsRayQueryParameters3D.create(focus,desired)
 	ray.exclude=[player.get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+	var allowed_distance := focus.distance_to(desired)
 	if not hit.is_empty():
 		var hit_position: Vector3=hit.position
-		var direction := (desired-focus).normalized()
-		desired=focus+direction*maxf(0.6,focus.distance_to(hit_position)-0.25)
+		allowed_distance=minf(allowed_distance,maxf(0.6,focus.distance_to(hit_position)-0.25))
+	# Retract immediately to avoid clipping, but recover smoothly when a
+	# wall edge leaves the ray; no sudden jump back to full zoom distance.
+	if camera_arm_distance<0.0 or allowed_distance<camera_arm_distance:
+		camera_arm_distance=allowed_distance
+	else:
+		camera_arm_distance=lerpf(camera_arm_distance,allowed_distance,1.0-exp(-9.0*delta))
+	desired=focus+(desired-focus).normalized()*camera_arm_distance
 	camera.position=desired
 	camera.look_at(focus)
 

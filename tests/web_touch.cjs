@@ -89,6 +89,17 @@ const server = http.createServer((req, res) => {
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[joy]});
     await page.waitForFunction(() => JSON.parse(window.zmbDiagnosticsJSON).stick[1]<-0.5);
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[joy,swipe]});
+    const yawBefore=(await diag()).yaw;
+    const right={...swipe,x:swipe.x+20};
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[joy,right]});
+    const angleDiff=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
+    await page.waitForFunction(y=>{const d=JSON.parse(window.zmbDiagnosticsJSON);return Math.abs(Math.atan2(Math.sin(d.yaw-y),Math.cos(d.yaw-y)))>0.05;},yawBefore);
+    const yawAfter=(await diag()).yaw;
+    assert.ok(angleDiff(yawAfter,yawBefore)<0&&angleDiff(yawAfter,yawBefore)>-0.6,'Small right-finger drag must not jump camera heading');
+    const joyMoved={...joy,x:joy.x+8};
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[joyMoved,right]});
+    await page.waitForTimeout(300);
+    assert.ok(Math.abs(angleDiff((await diag()).yaw,yawAfter))<0.01,'Moving joystick finger must not rotate camera');
     await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[joy,{...swipe,y:swipe.y-60}]});
     await page.waitForFunction(p => {const d=JSON.parse(window.zmbDiagnosticsJSON);return d.pitch>p+0.15&&d.stick[1]<-0.5;},initialCamera.pitch);
     await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});

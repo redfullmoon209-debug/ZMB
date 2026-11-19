@@ -38,6 +38,16 @@ func run():
 	var joy: Vector2=hud.joystick.get_global_rect().get_center()+Vector2(0,-50)
 	touch(1,joy,true)
 	touch(2,Vector2(470,300),true)
+	# A bad platform relative delta must not jump the camera to another finger.
+	var before_yaw: float=world.yaw
+	var before_drag_pitch: float=world.pitch
+	drag(2,Vector2(490,290),Vector2(-800,900))
+	assert(absf(wrapf(world.yaw-before_yaw,-PI,PI)+0.14)<0.001)
+	assert(absf(world.pitch-before_drag_pitch-0.07)<0.001)
+	var held_yaw: float=world.yaw
+	drag(1,joy+Vector2(5,0),Vector2(800,-900))
+	assert(is_equal_approx(world.yaw,held_yaw) and world.stick.y<0)
+	drag(2,Vector2(470,300),Vector2.ZERO)
 	touch(3,Vector2(670,300),true)
 	var before_pitch: float=world.pitch
 	drag(3,Vector2(770,300),Vector2(100,0))

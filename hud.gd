@@ -215,8 +215,11 @@ func _reset_touches():
 	joystick_finger = -1
 	game.stick = Vector2.ZERO
 
-func _camera_touch_drag(index: int, position: Vector2, relative: Vector2):
+func _camera_touch_drag(index: int, position: Vector2):
 	if camera_touches.size()==1:
+		# Derive the delta from this finger's own last position, not a
+		# platform-reported relative delta that may jump between touches.
+		var relative: Vector2=position-camera_touches[index]
 		camera_touches[index]=position
 		game.rotate_camera(relative)
 		return
@@ -275,7 +278,7 @@ func _input(event: InputEvent):
 			if event is InputEventMouseButton and not event.pressed: swallow_scroll_release=false
 			get_viewport().set_input_as_handled()
 			return
-		if not captured_touches.is_empty() or not camera_touches.is_empty():
+		if not captured_touches.is_empty() or not camera_touches.is_empty() or (game.started and not is_instance_valid(panel) and not chat.get_global_rect().has_point(event.position) and not chat.has_focus()):
 			get_viewport().set_input_as_handled()
 		return
 	if _modal_scroll_input(event):
@@ -296,7 +299,7 @@ func _input(event: InputEvent):
 	elif event is InputEventScreenDrag:
 		if _touch_move(event.index, event.position): get_viewport().set_input_as_handled()
 		elif camera_touches.has(event.index):
-			_camera_touch_drag(event.index,event.position,event.relative)
+			_camera_touch_drag(event.index,event.position)
 			get_viewport().set_input_as_handled()
 
 func _notification(what: int):
@@ -310,7 +313,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.12  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.13  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -330,7 +333,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.12","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.13","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
