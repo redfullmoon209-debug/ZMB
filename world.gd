@@ -43,6 +43,7 @@ var dash_time := 0.0
 var jump_requested := false
 var started := false
 var male := true
+var character_name := "Warrior"
 var player_visual: Node3D
 var session_started_msec := -1
 var previous_play_seconds := 0

@@ -34,7 +34,8 @@ func run():
 			assert(absf(row.get_child(0).size.x-row.get_child(2).size.x)<2)
 			assert(interior.encloses(row.get_global_rect()),str(page," lang=",language," row=",row.get_global_rect()," interior=",interior))
 			if page=="Character":
-				assert(hud.character_values.size()==17)
+				assert(hud.character_values.size()==18)
+				assert(hud.character_values["name"].text==world.character_name)
 				assert(hud.character_values["session"].text!="00:00:00")
 			if page in ["Bag","Storage"]:
 				for column in [row.get_child(0),row.get_child(2)]:

@@ -12,6 +12,7 @@ func run():
 	var hud=world.ui
 	world.hp=50
 	world.mp=25
+	world.xp=75
 	world.level=8
 	hud.refresh_player_status()
 	assert(hud.status_level.text=="LV 8")
@@ -19,6 +20,19 @@ func run():
 	assert(hud.status_mp.text=="MP  25 / 100")
 	assert(is_equal_approx(hud.status_fill_clips[0].size.x,126.5))
 	assert(is_equal_approx(hud.status_fill_clips[1].size.x,63.25))
+	assert(hud.status_exp.text=="EXP  75 / 100")
+	assert(is_equal_approx(hud.status_fill_clips[2].size.x,189.75))
+	assert(is_instance_valid(hud.status_fill_clips[2].get_child(0).texture))
+	var original_name: String=world.character_name
+	var original_lang: int=hud.lang
+	for player_name in ["นักดาบไทย","剑客","NightWalker"]:
+		world.character_name=player_name
+		for language in range(3):
+			hud.lang=language
+			hud.refresh_player_status()
+			assert(hud.status_name.text==player_name)
+	world.character_name=original_name
+	hud.lang=original_lang
 	world.hp=0
 	hud.refresh_player_status()
 	assert(hud.status_fill_clips[0].size.x==0)

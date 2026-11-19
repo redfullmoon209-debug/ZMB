@@ -7,6 +7,7 @@ var status_name: Label
 var status_level: Label
 var status_hp: Label
 var status_mp: Label
+var status_exp: Label
 var status_fill_clips: Array[Control] = []
 var status_portrait: Node3D
 var status_portrait_view: SubViewport
@@ -122,7 +123,6 @@ const ACTION_ART = {
 	"RUN":preload("res://assets/controls/actions/run.png"),
 }
 const INVENTORY_PAGES = ["Bag","Character","Storage","Skills"]
-var meter_fills: Array[TextureProgressBar] = []
 var character_values: Dictionary = {}
 const MENU_PAGES = ["Bag","Quest","Social","Trade","Market","Shop","Ranking","News","Map","Settings"]
 var config := ConfigFile.new()
@@ -167,6 +167,7 @@ func _ready():
 		config.set_value("ui","hud_layout",6)
 		config.save("user://zmb.cfg")
 	lang=int(config.get_value("ui","lang",1))
+	game.character_name=str(config.get_value("character","name","Warrior"))
 	root=Control.new()
 	add_child(root)
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -192,18 +193,6 @@ func _ready():
 	theme.default_font=ui_font
 	root.theme=theme
 	build_player_status()
-	# Decorative meters do not participate in touch routing.
-	for i in [2]:
-		var meter := TextureProgressBar.new()
-		meter.mouse_filter=Control.MOUSE_FILTER_IGNORE
-		meter.position=Vector2(22,110+i*17)
-		meter.texture_under=load(UHD+["03_HP_Track.png","04_MP_Track.png","05_EXP_Track.png"][i])
-		meter.texture_progress=load(UHD+["07_HP_Fill.png","08_MP_Fill.png","09_EXP_Fill.png"][i])
-		meter.nine_patch_stretch=true
-		meter.size=Vector2(220,16)
-		meter.max_value=100
-		root.add_child(meter)
-		meter_fills.append(meter)
 	build_target_status()
 	zone_label=label("",Vector2(420,106),Vector2(440,34))
 	zone_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
@@ -286,7 +275,6 @@ func _ready():
 	quest_tracker.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	quest_tracker.add_theme_font_size_override("font_size",16)
 	editable_hud["QUEST TRACKER"]=quest_tracker
-	editable_hud["METER 2"]=meter_fills[0]
 	for key in editable_hud:
 		var c: Control=editable_hud[key]
 		if not hud_defaults.has(key):
@@ -339,10 +327,13 @@ func build_player_status():
 	player_status.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	root.add_child(player_status)
 	player_status.position=Vector2(18,14)
-	player_status.size=Vector2(344,108)
+	player_status.size=Vector2(344,133)
 	status_art(player_status,"02_nameplate.png",Vector2(77,0),Vector2(267,29))
 	status_name=status_text(player_status,Vector2(94,0),Vector2(232,29),19)
-	for i in range(2):
+	status_name.clip_text=true
+	status_name.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	status_name.auto_translate_mode=Node.AUTO_TRANSLATE_MODE_DISABLED
+	for i in range(3):
 		var p := Vector2(83,31+i*25)
 		status_art(player_status,"04_bar_track.png",p,Vector2(261,24))
 		var clip := Control.new()
@@ -351,11 +342,12 @@ func build_player_status():
 		player_status.add_child(clip)
 		clip.position=p+Vector2(4,4)
 		clip.size=Vector2(253,16)
-		status_art(clip,["05_hp_fill.png","06_mp_fill.png"][i],Vector2.ZERO,Vector2(253,16))
+		status_art(clip,["05_hp_fill.png","06_mp_fill.png","09_exp_fill.png"][i],Vector2.ZERO,Vector2(253,16))
 		status_fill_clips.append(clip)
 		var l := status_text(player_status,p,Vector2(261,24),15)
 		if i==0: status_hp=l
-		else: status_mp=l
+		elif i==1: status_mp=l
+		else: status_exp=l
 	status_art(player_status,"01_portrait_frame.png",Vector2.ZERO,Vector2(92,92))
 	var portrait := TextureRect.new()
 	portrait.mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -386,17 +378,19 @@ func build_player_status():
 	status_portrait_view.add_child(light)
 	status_art(player_status,"03_level_badge.png",Vector2(15,69),Vector2(62,24))
 	status_level=status_text(player_status,Vector2(15,69),Vector2(62,24),13)
-	stats=status_text(player_status,Vector2(93,82),Vector2(250,22),13)
+	stats=status_text(player_status,Vector2(93,107),Vector2(250,22),13)
 	stats.horizontal_alignment=HORIZONTAL_ALIGNMENT_LEFT
 
 func refresh_player_status():
-	status_name.text=localized("นักรบ","Warrior","战士")
+	status_name.text=game.character_name
 	status_level.text="LV %d"%game.level
 	status_hp.text="HP  %d / 100"%game.hp
 	status_mp.text="MP  %d / 100"%game.mp
+	status_exp.text="EXP  %d / 100"%game.xp
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/100.0,0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/100.0,0,1)
-	stats.text="EXP %d/100   Gold %d   v0.1.27"%[game.xp,game.coins]
+	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
+	stats.text="Gold %d   v0.1.28"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -773,7 +767,6 @@ func _process(delta):
 			quest_tracker.text=QUEST_PAGE.title(self,tracked_quest)+"\n%d / %d"%[mini(game.quest_progress(tracked_quest),game.quest_goal(tracked_quest)),game.quest_goal(tracked_quest)]
 	joystick_knob.position=(joystick.size-joystick_knob.size)*0.5+game.stick*(joystick.size.x-joystick_knob.size.x)*0.5
 	if selected_page=="Character": refresh_character_details()
-	if meter_fills.size()==1: meter_fills[0].value=game.xp
 	refresh_player_status()
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
@@ -794,7 +787,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.27","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.28","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -963,6 +956,7 @@ func build_character_details(parent: VBoxContainer):
 	details.add_theme_constant_override("v_separation",0)
 	parent.add_child(details)
 	var fields := {
+		"name":localized("ชื่อตัวละคร","Character name","角色名称"),
 		"level":localized("เลเวล","Level","等级"),
 		"gender":localized("เพศ","Gender","性别"),
 		"weapon":localized("สายอาวุธ","Weapon type","武器类型"),
@@ -990,6 +984,7 @@ func build_character_details(parent: VBoxContainer):
 		var value := Label.new()
 		value.add_theme_font_size_override("font_size",13)
 		value.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+		if key=="name": value.auto_translate_mode=Node.AUTO_TRANSLATE_MODE_DISABLED
 		value.add_theme_color_override("font_color",Color("e8d4b6"))
 		details.add_child(value)
 		character_values[key]=value
@@ -1003,6 +998,7 @@ func build_character_details(parent: VBoxContainer):
 func refresh_character_details():
 	if character_values.is_empty(): return
 	var values := {
+		"name":game.character_name,
 		"level":str(game.level),
 		"gender":localized("ชาย","Male","男") if game.male else localized("หญิง","Female","女"),
 		"weapon":[localized("ดาบ","Sword","剑"),localized("ทวน","Spear","枪"),localized("ปืน","Gun","火枪")][game.weapon],
@@ -1394,6 +1390,14 @@ func editor_input(event: InputEvent) -> bool:
 				break
 	return true
 
+func enter_named_character(chosen_name: String, is_male: bool):
+	var cleaned:=chosen_name.strip_edges()
+	if not cleaned.is_empty(): game.character_name=cleaned.left(20)
+	config.set_value("character","name",game.character_name)
+	config.save("user://zmb.cfg")
+	game.begin(is_male)
+	close_page()
+
 func open_page(page:String):
 	if page=="GM" and not game.gm_allowed(): return
 	if page=="Menu" and selected_page=="Menu":
@@ -1471,8 +1475,15 @@ func open_page(page:String):
 		"GM": GM_PAGE.build(self,content)
 		"Start":
 			add_text(content,"ZMB • SPIRIT PLAGUE\nAncient China | Offline prototype\nSelect a character to enter the village.")
-			start_button=add_button(content,"Male warrior",func():game.begin(true);close_page())
-			add_button(content,"Female warrior",func():game.begin(false);close_page())
+			add_text(content,localized("ชื่อตัวละคร (ไทย / English / 中文)","Character name (ไทย / English / 中文)","角色名称 (ไทย / English / 中文)"))
+			var name_input:=LineEdit.new()
+			name_input.text=game.character_name
+			name_input.max_length=20
+			name_input.custom_minimum_size.y=42
+			name_input.auto_translate_mode=Node.AUTO_TRANSLATE_MODE_DISABLED
+			content.add_child(name_input)
+			start_button=add_button(content,"Male warrior",func():enter_named_character(name_input.text,true))
+			add_button(content,"Female warrior",func():enter_named_character(name_input.text,false))
 		"Bag","Storage","Character","Skills":
 			build_inventory_page(content,page)
 		"Revive":
