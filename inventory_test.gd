@@ -45,6 +45,13 @@ func run():
 				assert(row.get_child(2).get_child(1).get_child_count()==48)
 				assert(row.get_child(0).get_child(1).get_child(1) is SubViewportContainer)
 				assert(row.get_child(0).get_child(2).get_child_count()==5)
+				var gear := row.get_child(0).get_child(1)
+				var accessories := row.get_child(0).get_child(2)
+				for side in [gear.get_child(0),gear.get_child(2),accessories]:
+					for slot in side.get_children():
+						assert(is_equal_approx(slot.size.x,slot.size.y))
+						assert(is_equal_approx(slot.size.x,48.0 if side==accessories else 64.0))
+				assert(accessories.get_global_rect().position.y>=gear.get_global_rect().end.y)
 				assert(hud.modal_scroll.get_h_scroll_bar().max_value<=hud.modal_scroll.get_h_scroll_bar().page+1)
 				assert(hud.modal_scroll.get_v_scroll_bar().max_value<=hud.modal_scroll.get_v_scroll_bar().page+1)
 	hud.lang=original_lang

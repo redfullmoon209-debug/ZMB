@@ -444,7 +444,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.43"%game.coins
+	stats.text="Gold %d   v0.1.44"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -873,7 +873,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.43","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.44","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -998,6 +998,11 @@ func show_item_details(id: String, index: int=-1, equipped_slot: String=""):
 func equipment_slot(parent: Node, title: String, slot: String, dimensions: Vector2):
 	var id: String=game.equipment.get(slot,"")
 	var b := inventory_slot(parent,title,dimensions,not id.is_empty())
+	b.size_flags_horizontal=Control.SIZE_SHRINK_CENTER
+	b.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+	b.clip_text=true
+	b.add_theme_font_size_override("font_size",10 if dimensions.x<55 else 11)
+	b.set_meta("equipment_slot",slot)
 	if not id.is_empty():
 		var data := Catalog.describe(id)
 		b.text=data.icon+" "+title
@@ -1043,20 +1048,25 @@ func character_preview(parent: Node):
 func equipment_preview(parent: Node):
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",8)
+	row.size_flags_vertical=Control.SIZE_EXPAND_FILL
 	parent.add_child(row)
 	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation",4)
 	row.add_child(left)
 	var titles := [localized("ศีรษะ","Head","头部"),localized("เสื้อ","Armor","护甲"),localized("ถุงมือ","Gloves","手套"),localized("กางเกง","Legs","裤子"),localized("รองเท้า","Boots","鞋子")]
-	for i in range(5): equipment_slot(left,titles[i],Catalog.SLOTS[i],Vector2(86,57))
+	for i in range(5): equipment_slot(left,titles[i],Catalog.SLOTS[i],Vector2(64,64))
 	character_preview(row)
 	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation",4)
 	row.add_child(right)
 	titles=[localized("อาวุธหลัก","Main weapon","主武器"),localized("อาวุธรอง","Off hand","副武器"),localized("สัตว์เก็บของ","Loot pet","拾取宠物")]
-	for i in range(3): equipment_slot(right,titles[i],Catalog.SLOTS[i+5],Vector2(86,70))
+	for i in range(3): equipment_slot(right,titles[i],Catalog.SLOTS[i+5],Vector2(64,64))
 	var accessories := HBoxContainer.new()
+	accessories.alignment=BoxContainer.ALIGNMENT_CENTER
+	accessories.add_theme_constant_override("separation",24)
 	parent.add_child(accessories)
 	titles=[localized("กำไล","Bracelet","手镯"),localized("แหวน","Ring","戒指"),localized("สร้อย","Necklace","项链"),localized("แหวน","Ring","戒指"),localized("กำไล","Bracelet","手镯")]
-	for i in range(5): equipment_slot(accessories,titles[i],Catalog.SLOTS[i+8],Vector2(60,45))
+	for i in range(5): equipment_slot(accessories,titles[i],Catalog.SLOTS[i+8],Vector2(48,48))
 
 func format_playtime(seconds: int) -> String:
 	return "%02d:%02d:%02d"%[int(seconds/3600.0),int(seconds/60.0)%60,seconds%60]
