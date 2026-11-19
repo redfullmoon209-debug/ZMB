@@ -32,6 +32,28 @@ var jump_requested := false
 var started := false
 var male := true
 var player_visual: Node3D
+var session_started_msec := -1
+var previous_play_seconds := 0
+var first_play_unix := 0
+var playtime_save_timer := 0.0
+var monsters_defeated := 0
+var playtime_config := ConfigFile.new()
+
+func session_seconds() -> int:
+	return 0 if session_started_msec<0 else int((Time.get_ticks_msec()-session_started_msec)/1000.0)
+
+func total_play_seconds() -> int:
+	return previous_play_seconds+session_seconds()
+
+func save_playtime():
+	if session_started_msec<0: return
+	playtime_config.set_value("playtime","seconds",total_play_seconds())
+	playtime_config.set_value("playtime","first_play_unix",first_play_unix)
+	playtime_config.save("user://zmb_playtime.cfg")
+
+func _notification(what: int):
+	if what==NOTIFICATION_WM_CLOSE_REQUEST or what==NOTIFICATION_APPLICATION_FOCUS_OUT or what==NOTIFICATION_APPLICATION_PAUSED:
+		save_playtime()
 
 func _ready():
 	var env := WorldEnvironment.new()
@@ -196,6 +218,13 @@ func spawn_enemy(i: int):
 	enemies.append(n)
 
 func begin(is_male: bool):
+	if session_started_msec<0:
+		playtime_config.load("user://zmb_playtime.cfg")
+		previous_play_seconds=maxi(0,int(playtime_config.get_value("playtime","seconds",0)))
+		first_play_unix=int(playtime_config.get_value("playtime","first_play_unix",0))
+		if first_play_unix<=0: first_play_unix=int(Time.get_unix_time_from_system())
+		session_started_msec=Time.get_ticks_msec()
+		save_playtime()
 	male = is_male
 	player_visual.scale = Vector3.ONE if male else Vector3(0.85,0.94,0.85)
 	player_visual.rotation.y = PI
@@ -228,6 +257,7 @@ func attack(skill: int):
 	for n in hits:
 		n.set_meta("hp",float(n.get_meta("hp"))-15-skill*7)
 		if n.get_meta("hp")<=0:
+			monsters_defeated+=1
 			var drop := box(n.position+Vector3.UP*0.25,Vector3(0.5,0.5,0.5),Color("e7c46d"),self)
 			loot.append(drop)
 			xp += 25
@@ -328,6 +358,11 @@ func _unhandled_input(event):
 
 func _physics_process(delta: float):
 	if not is_instance_valid(player): return
+	if started:
+		playtime_save_timer+=delta
+		if playtime_save_timer>=10.0:
+			playtime_save_timer=0.0
+			save_playtime()
 	if not started or hp<=0:
 		update_camera(delta)
 		return

@@ -1,5 +1,9 @@
 # ZMB v0.1 — Offline prototype
 
+## v0.1.11 — Character statistics and playtime
+
+Character information shows 17 localized live fields, with session time measured from character entry using monotonic time. Local accumulated playtime and first-entry timestamp are saved separately every 10 seconds and on focus loss/exit. Account registration remains unavailable until real authentication exists. All browser-local values are untrusted and must never be used as anti-cheat evidence. Production must store immutable account creation UTC, server-issued session IDs, server-timestamped login/logout/heartbeat records, deduplicated active seconds and server-authoritative EXP/item/level transactions. Compare progression against actual recorded playtime to flag anomalies for review, not automatic bans based on hours alone.
+
 ## v0.1.10 — Refit inventory popup
 
 Draw the visible popup artwork region without the transparent image padding. Enlarge the inventory panel, move its navigation and content down, and leave a 40-pixel horizontal inset and 68-pixel top inset. The updated regression verifies both header and inventory content remain inside the frame in all three languages.

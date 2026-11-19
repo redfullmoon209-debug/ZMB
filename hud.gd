@@ -31,6 +31,7 @@ var menu_items: Dictionary = {}
 const UHD = "res://assets/uhd/"
 const INVENTORY_PAGES = ["Bag","Character","Storage","Skills"]
 var meter_fills: Array[TextureProgressBar] = []
+var character_values: Dictionary = {}
 const MENU_PAGES = ["Bag","Quest","Social","Trade","Market","Shop","Ranking","News","Map","Settings"]
 var config := ConfigFile.new()
 var names := {"Bag":["กระเป๋า","Bag","背包"],"Storage":["คลัง","Storage","仓库"],"Character":["ข้อมูลตัวละคร","Character","角色信息"],"Skills":["สกิล","Skills","技能"],"Market":["ตลาดโลก","Market","市场"],"Shop":["ร้านค้า","Shop","商店"],"Quest":["เควส","Quest","任务"],"Social":["สังคม","Social","社交"],"Ranking":["อันดับ","Ranking","排行"],"News":["ประกาศ","News","公告"],"Settings":["ตั้งค่า","Settings","设置"],"Trade":["แลกเปลี่ยน","Trade","交易"],"Map":["แผนที่","Map","地图"]}
@@ -290,11 +291,12 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
+	if selected_page=="Character": refresh_character_details()
 	if meter_fills.size()==3:
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.10  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.11  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -314,12 +316,13 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.10","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.11","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
 
 func close_page():
+	character_values.clear()
 	if is_instance_valid(panel): panel.queue_free()
 	panel=null
 	close_button=null
@@ -443,6 +446,87 @@ func equipment_preview(parent: Node):
 	for title in [localized("กำไล","Bracelet","手镯"),localized("แหวน","Ring","戒指"),localized("สร้อย","Necklace","项链"),localized("แหวน","Ring","戒指"),localized("กำไล","Bracelet","手镯")]:
 		inventory_slot(accessories,title,Vector2(60,45))
 
+func format_playtime(seconds: int) -> String:
+	return "%02d:%02d:%02d"%[int(seconds/3600.0),int(seconds/60.0)%60,seconds%60]
+
+func build_character_details(parent: VBoxContainer):
+	parent.add_theme_constant_override("separation",3)
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y=20
+	parent.add_child(spacer)
+	var title := Label.new()
+	title.text=localized("ข้อมูลและพลังตัวละคร","Character statistics","角色属性")
+	title.add_theme_font_size_override("font_size",18)
+	parent.add_child(title)
+	parent.add_child(HSeparator.new())
+	var details := GridContainer.new()
+	details.columns=2
+	details.add_theme_constant_override("h_separation",16)
+	details.add_theme_constant_override("v_separation",0)
+	parent.add_child(details)
+	var fields := {
+		"level":localized("เลเวล","Level","等级"),
+		"gender":localized("เพศ","Gender","性别"),
+		"weapon":localized("สายอาวุธ","Weapon type","武器类型"),
+		"hp":localized("พลังชีวิต","Health","生命值"),
+		"mp":localized("พลังเวท","Mana","法力值"),
+		"xp":localized("ค่าประสบการณ์","Experience","经验值"),
+		"attack":localized("พลังโจมตีพื้นฐาน","Base attack","基础攻击"),
+		"defense":localized("พลังป้องกัน","Defense","防御"),
+		"range":localized("ระยะโจมตี","Attack range","攻击距离"),
+		"attack_speed":localized("ความเร็วโจมตี","Attack speed","攻击速度"),
+		"movement":localized("ความเร็วเคลื่อนที่","Movement speed","移动速度"),
+		"kills":localized("มอนสเตอร์ที่กำจัด","Monsters defeated","击败怪物"),
+		"gold":localized("เงิน","Gold","金币"),
+		"session":localized("เวลาออนไลน์รอบนี้","Session time","本次在线时长"),
+		"total":localized("ชั่วโมงออนไลน์สะสม","Total playtime","累计在线时长"),
+		"registered":localized("เวลาสมัครบัญชี","Account registration","账号注册时间"),
+		"first_play":localized("เข้าเกมครั้งแรก (เครื่อง)","First local entry","首次本地登录")
+	}
+	for key in fields:
+		var name_label := Label.new()
+		name_label.text=fields[key]
+		name_label.add_theme_font_size_override("font_size",13)
+		name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		details.add_child(name_label)
+		var value := Label.new()
+		value.add_theme_font_size_override("font_size",13)
+		value.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+		value.add_theme_color_override("font_color",Color("e8d4b6"))
+		details.add_child(value)
+		character_values[key]=value
+	var notice := Label.new()
+	notice.text=localized("ข้อมูลทดสอบในเครื่อง • ยังไม่ใช่หลักฐานจากเซิร์ฟเวอร์","Local demo data • not server-verified","本地测试数据 • 未经服务器验证")
+	notice.add_theme_font_size_override("font_size",13)
+	notice.modulate=Color("afb1b8")
+	parent.add_child(notice)
+	refresh_character_details()
+
+func refresh_character_details():
+	if character_values.is_empty(): return
+	var values := {
+		"level":str(game.level),
+		"gender":localized("ชาย","Male","男") if game.male else localized("หญิง","Female","女"),
+		"weapon":[localized("ดาบ","Sword","剑"),localized("ทวน","Spear","枪"),localized("ปืน","Gun","火枪")][game.weapon],
+		"hp":"%d / 100"%game.hp,
+		"mp":"%d / 100"%game.mp,
+		"xp":"%d / 100"%game.xp,
+		"attack":"15",
+		"defense":"—",
+		"range":"%.1f m"%[2.7,5.5,12.0][game.weapon],
+		"attack_speed":"%.2f / s"%(1.0/0.45),
+		"movement":"%.1f m/s"%(18.0 if game.dash_time>0 else (8.0 if game.run_mode else 4.5)),
+		"kills":str(game.monsters_defeated),
+		"gold":str(game.coins),
+		"session":format_playtime(game.session_seconds()),
+		"total":format_playtime(game.total_play_seconds()),
+		"registered":localized("ยังไม่มีบัญชี","No account yet","暂无账号"),
+		"first_play":Time.get_datetime_string_from_unix_time(game.first_play_unix,true).left(16)+" UTC" if game.first_play_unix>0 else "—"
+	}
+	for key in values:
+		var value: Label=character_values[key]
+		if is_instance_valid(value): value.text=values[key]
+
 func build_inventory_page(content: Node, page: String):
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",20)
@@ -470,8 +554,7 @@ func build_inventory_page(content: Node, page: String):
 			inventory_grid(right,48,8,game.items)
 		"Character":
 			character_preview(left)
-			add_text(right,localized("ข้อมูลตัวละคร","Character information","角色信息"))
-			add_text(right,localized("เลเวล","Level","等级")+" %d\nHP %d / MP %d\nEXP %d / 100\n"%[game.level,game.hp,game.mp,game.xp]+localized("เงิน","Gold","金币")+" %d"%game.coins)
+			build_character_details(right)
 		"Skills":
 			character_preview(left)
 			add_text(right,localized("สกิลอาวุธ","Weapon skills","武器技能"))

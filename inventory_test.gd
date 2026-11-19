@@ -6,7 +6,11 @@ func run():
 	var world := (load("res://main.tscn") as PackedScene).instantiate()
 	root.add_child(world)
 	await process_frame
+	assert(world.session_seconds()==0 and world.session_started_msec<0)
 	world.begin(true)
+	assert(world.session_started_msec>=0 and world.first_play_unix>0)
+	await create_timer(1.2).timeout
+	assert(world.session_seconds()>=1 and world.total_play_seconds()>=1)
 	var hud = world.ui
 	var original_lang: int=hud.lang
 	for language in range(3):
@@ -28,7 +32,10 @@ func run():
 			assert(lang_button.get_popup().item_count==3)
 			var row: HBoxContainer=hud.modal_scroll.get_child(0).get_child(0)
 			assert(absf(row.get_child(0).size.x-row.get_child(2).size.x)<2)
-			assert(interior.encloses(row.get_global_rect()))
+			assert(interior.encloses(row.get_global_rect()),str(page," lang=",language," row=",row.get_global_rect()," interior=",interior))
+			if page=="Character":
+				assert(hud.character_values.size()==17)
+				assert(hud.character_values["session"].text!="00:00:00")
 			if page in ["Bag","Storage"]:
 				for column in [row.get_child(0),row.get_child(2)]:
 					for child in column.get_children():
