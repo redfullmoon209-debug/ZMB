@@ -55,6 +55,27 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => {const d=JSON.parse(window.zmbDiagnosticsJSON);return !d.safe&&d.position[2]<-13;},null,{timeout:20000});
     await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
     console.log('PASS: player spawns inside safe village and can walk freely through north gate to hunting grounds');
+    await page.waitForFunction(() => JSON.parse(window.zmbDiagnosticsJSON).stick.every(n=>n===0));
+    const initialCamera = await diag();
+    assert.equal(initialCamera.camera_follow,false);
+    const swipe = {x:canvas.x+canvas.width*0.56,y:canvas.y+canvas.height*0.40,id:2};
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[joy]});
+    await page.waitForFunction(() => JSON.parse(window.zmbDiagnosticsJSON).stick[1]<-0.5);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[joy,swipe]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[joy,{...swipe,y:swipe.y-60}]});
+    await page.waitForFunction(p => {const d=JSON.parse(window.zmbDiagnosticsJSON);return d.pitch>p+0.15&&d.stick[1]<-0.5;},initialCamera.pitch);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    const highPitch = (await diag()).pitch;
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[swipe]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...swipe,y:swipe.y+60}]});
+    await page.waitForFunction(p => JSON.parse(window.zmbDiagnosticsJSON).pitch<p-0.15,highPitch);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    const mode = point((await diag()).controls.CAMERA);
+    await page.touchscreen.tap(mode.x,mode.y);
+    await page.waitForFunction(()=>{const d=JSON.parse(window.zmbDiagnosticsJSON);return d.camera_follow&&Math.abs(Math.atan2(Math.sin(d.yaw-d.facing-Math.PI),Math.cos(d.yaw-d.facing-Math.PI)))<0.15;});
+    await page.touchscreen.tap(mode.x,mode.y);
+    await page.waitForFunction(()=>!JSON.parse(window.zmbDiagnosticsJSON).camera_follow);
+    console.log('PASS: mobile vertical camera drag while moving, and toggle behind-player/free camera modes');
   } catch (error) {
     console.log('Failure state:',await page.evaluate(()=>({body:document.body.innerText,diagnostics:window.zmbDiagnosticsJSON,bridge:typeof window.zmbTouchDrain,ready:window.zmbTouchReady,gameplay:window.zmbGameplay,webgl2:!!document.createElement('canvas').getContext('webgl2'),canvas:document.querySelector('canvas')?.getBoundingClientRect().toJSON()})));
     throw error;

@@ -21,7 +21,11 @@ var run_mode := false
 var weapon := 0
 var cooldown := 0.0
 var yaw := 0.0
-var zoom := 9.0
+var pitch := deg_to_rad(28.0)
+var zoom := 10.0
+var camera_follow := false
+var follow_input_active := false
+var follow_input_yaw := 0.0
 var stick := Vector2.ZERO
 var dash_time := 0.0
 var jump_requested := false
@@ -194,6 +198,7 @@ func spawn_enemy(i: int):
 func begin(is_male: bool):
 	male = is_male
 	player_visual.scale = Vector3.ONE if male else Vector3(0.85,0.94,0.85)
+	player_visual.rotation.y = PI
 	started = true
 
 func choose_target():
@@ -250,10 +255,55 @@ func revive():
 	player.velocity=Vector3.ZERO
 	target=null
 	auto=false
+	follow_input_active=false
+	player_visual.rotation.y=PI
+
+func set_camera_follow(enabled: bool):
+	camera_follow=enabled
+	follow_input_active=false
+
+func rotate_camera(relative: Vector2):
+	# Vertical orbit is available in both modes. Follow mode owns horizontal
+	# heading, so dragging sideways never breaks the behind-character lock.
+	if not camera_follow:
+		yaw=wrapf(yaw-relative.x*0.007,-PI,PI)
+	pitch=clampf(pitch-relative.y*0.007,deg_to_rad(-8.0),deg_to_rad(78.0))
+
+func movement_vector(input: Vector2) -> Vector3:
+	var movement_yaw := yaw
+	if camera_follow:
+		# Keep a held joystick's reference stable while the camera turns behind
+		# the player; otherwise holding sideways would make the player circle.
+		if input.length()<=0.06:
+			follow_input_active=false
+		elif not follow_input_active:
+			follow_input_yaw=yaw
+			follow_input_active=true
+		if follow_input_active: movement_yaw=follow_input_yaw
+	return Vector3(input.x,0,input.y).rotated(Vector3.UP,movement_yaw).limit_length()
+
+func update_camera(delta: float):
+	if camera_follow and started:
+		var desired_yaw := wrapf(player_visual.rotation.y+PI,-PI,PI)
+		yaw=lerp_angle(yaw,desired_yaw,1.0-exp(-8.0*delta))
+	var focus := player.position+Vector3.UP*1.2
+	var horizontal := cos(pitch)*zoom
+	var offset := Vector3(sin(yaw)*horizontal,sin(pitch)*zoom,cos(yaw)*horizontal)
+	var desired := focus+offset
+	desired.y=maxf(0.5,desired.y)
+	# Clip against town walls, rather than placing the camera inside them.
+	var ray := PhysicsRayQueryParameters3D.create(focus,desired)
+	ray.exclude=[player.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+	if not hit.is_empty():
+		var hit_position: Vector3=hit.position
+		var direction := (desired-focus).normalized()
+		desired=focus+direction*maxf(0.6,focus.distance_to(hit_position)-0.25)
+	camera.position=desired
+	camera.look_at(focus)
 
 func _unhandled_input(event):
-	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT): yaw-=event.relative.x*0.007
-	if event is InputEventScreenDrag and event.position.x>get_viewport().get_visible_rect().size.x*0.35: yaw-=event.relative.x*0.007
+	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT): rotate_camera(event.relative)
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index==MOUSE_BUTTON_WHEEL_UP: zoom=maxf(4,zoom-1)
 		if event.button_index==MOUSE_BUTTON_WHEEL_DOWN: zoom=minf(16,zoom+1)
@@ -278,17 +328,16 @@ func _unhandled_input(event):
 
 func _physics_process(delta: float):
 	if not is_instance_valid(player): return
-	var offset := Vector3(sin(yaw)*zoom,zoom*0.65,cos(yaw)*zoom)
-	camera.position = player.position+offset
-	camera.look_at(player.position+Vector3.UP*1.2)
-	if not started or hp<=0: return
+	if not started or hp<=0:
+		update_camera(delta)
+		return
 	cooldown=maxf(0,cooldown-delta)
 	dash_time=maxf(0,dash_time-delta)
 	mp=minf(100,mp+delta*2)
 	var input := stick
 	input.x += float(Input.is_physical_key_pressed(KEY_D))-float(Input.is_physical_key_pressed(KEY_A))
 	input.y += float(Input.is_physical_key_pressed(KEY_S))-float(Input.is_physical_key_pressed(KEY_W))
-	var move := Vector3(input.x,0,input.y).rotated(Vector3.UP,yaw).limit_length()
+	var move := movement_vector(input)
 	if in_safe_zone():
 		auto=false
 		target=null
@@ -330,3 +379,4 @@ func _physics_process(delta: float):
 			var next := n.position+Vector3(diff.x,0,diff.z).normalized()*delta*1.5
 			if not is_safe_position(next,0.6): n.position=next
 		elif diff.length()<=1.6: hp=maxf(0,hp-delta*4)
+	update_camera(delta)

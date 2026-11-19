@@ -4,6 +4,7 @@ var root: Control
 var stats: Label
 var target_label: Label
 var zone_label: Label
+var camera_mode_button: Button
 var panel: PanelContainer
 var body: VBoxContainer
 var chat: LineEdit
@@ -13,6 +14,7 @@ var selected_page := ""
 var buttons: Array[Button] = []
 var touch_actions: Dictionary = {}
 var captured_touches: Dictionary = {}
+var camera_touches: Dictionary = {}
 var joystick_finger := -1
 var web_diagnostics := false
 var diagnostic_timer := 0.0
@@ -72,6 +74,11 @@ func _ready():
 	make_button("MP",Vector2(570,565),Vector2(80,55),func():game.mp=minf(100,game.mp+35))
 	make_button("+ ZOOM",Vector2(880,20),Vector2(100,48),func():game.zoom=maxf(4,game.zoom-1))
 	make_button("- ZOOM",Vector2(985,20),Vector2(100,48),func():game.zoom=minf(16,game.zoom+1))
+	game.set_camera_follow(bool(config.get_value("camera","follow",false)))
+	camera_mode_button=make_button("CAMERA",Vector2(1040,105),Vector2(215,56),func():
+		game.set_camera_follow(not game.camera_follow)
+		config.set_value("camera","follow",game.camera_follow)
+		config.save("user://zmb.cfg"))
 	chat=LineEdit.new()
 	chat.placeholder_text="Chat • local demo"
 	chat.position=Vector2(430,665)
@@ -98,6 +105,7 @@ func label(t: String,p:Vector2,s:Vector2) -> Label:
 func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	var b := Button.new()
 	b.text=t
+	b.set_meta("hud_key",t)
 	b.position=config.get_value("position",t,p)
 	b.size=config.get_value("size",t,s)
 	b.scale=config.get_value("scale",t,Vector2.ONE)
@@ -171,6 +179,7 @@ func _touch_end(index: int) -> bool:
 
 func _reset_touches():
 	captured_touches.clear()
+	camera_touches.clear()
 	joystick_finger = -1
 	game.stick = Vector2.ZERO
 
@@ -180,18 +189,26 @@ func _input(event: InputEvent):
 	# Godot's mouse emulation represents only one finger. HUD controls use
 	# actual touch indices instead, while popup menus still use mouse emulation.
 	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
-		if not captured_touches.is_empty():
+		if not captured_touches.is_empty() or not camera_touches.is_empty():
 			get_viewport().set_input_as_handled()
 		return
 	if event is InputEventScreenTouch:
 		if not event.pressed or event.canceled:
 			if _touch_end(event.index):
 				get_viewport().set_input_as_handled()
+			elif camera_touches.erase(event.index):
+				get_viewport().set_input_as_handled()
 			return
 		if _touch_start(event.index, event.position):
 			get_viewport().set_input_as_handled()
+		elif game.started and not is_instance_valid(panel) and event.position.x > get_viewport().get_visible_rect().size.x*0.35 and not chat.get_global_rect().has_point(event.position):
+			camera_touches[event.index]=true
+			get_viewport().set_input_as_handled()
 	elif event is InputEventScreenDrag:
 		if _touch_move(event.index, event.position): get_viewport().set_input_as_handled()
+		elif camera_touches.has(event.index):
+			game.rotate_camera(event.relative)
+			get_viewport().set_input_as_handled()
 
 func _notification(what: int):
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and is_instance_valid(game):
@@ -199,7 +216,8 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
-	stats.text="ZMB v0.1.4  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.5  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
 	zone_label.modulate=Color("a7f2bd") if safe else Color("ffaf83")
@@ -213,9 +231,9 @@ func _process(delta):
 	if web_diagnostics and diagnostic_timer <= 0:
 		diagnostic_timer = 0.10
 		var controls := {}
-		for b in buttons: controls[b.text] = _web_rect(b)
+		for b in buttons: controls[b.get_meta("hud_key",b.text)] = _web_rect(b)
 		if is_instance_valid(start_button): controls["START"] = _web_rect(start_button)
-		var d := {"version":"0.1.4","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.5","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -252,6 +270,7 @@ func grid(parent:Node,count:int,columns:int,contents:Array=[]):
 
 func open_page(page:String):
 	joystick_finger = -1
+	camera_touches.clear()
 	game.stick = Vector2.ZERO
 	close_page()
 	selected_page=page
@@ -333,9 +352,10 @@ func open_page(page:String):
 							"Y": b.position.y=v
 							"Scale": b.scale=Vector2.ONE*v
 							"Alpha": b.modulate.a=v
-						config.set_value("position",b.text,b.position)
-						config.set_value("opacity",b.text,b.modulate.a)
-						config.set_value("scale",b.text,b.scale)
+						var key: String=b.get_meta("hud_key",b.text)
+						config.set_value("position",key,b.position)
+						config.set_value("opacity",key,b.modulate.a)
+						config.set_value("scale",key,b.scale)
 						config.save("user://zmb.cfg"))
 					row.add_child(spin)
 		"Revive":

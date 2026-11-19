@@ -33,6 +33,7 @@ jobs:
           if grep -E 'SCRIPT ERROR|Parse Error' /tmp/smoke.log; then exit 1; fi
           timeout 20s godot --headless --script multitouch_test.gd
           timeout 20s godot --headless --script safe_zone_test.gd
+          timeout 20s godot --headless --script camera_test.gd
       - name: Export Web
         run: |
           mkdir -p build
