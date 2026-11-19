@@ -1,0 +1,54 @@
+name: Build and deploy ZMB Web
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot and export templates
+        env:
+          VERSION: 4.6.3
+        run: |
+          curl -fL --retry 3 "https://github.com/godotengine/godot/releases/download/${VERSION}-stable/Godot_v${VERSION}-stable_linux.x86_64.zip" -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo install /tmp/godot/Godot_v${VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          curl -fL --retry 3 "https://github.com/godotengine/godot/releases/download/${VERSION}-stable/Godot_v${VERSION}-stable_export_templates.tpz" -o /tmp/templates.zip
+          unzip -q /tmp/templates.zip -d /tmp/templates
+          mkdir -p "$HOME/.local/share/godot/export_templates/${VERSION}.stable"
+          cp /tmp/templates/templates/* "$HOME/.local/share/godot/export_templates/${VERSION}.stable/"
+      - name: Import and smoke test
+        run: |
+          godot --headless --editor --import --quit
+          godot --headless --quit-after 120 2>&1 | tee /tmp/smoke.log
+          if grep -E 'SCRIPT ERROR|Parse Error' /tmp/smoke.log; then exit 1; fi
+      - name: Export Web
+        run: |
+          mkdir -p build
+          godot --headless --export-release Web build/index.html
+          test -s build/index.html
+          test -s build/index.wasm
+          touch build/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
