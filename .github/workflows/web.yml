@@ -41,6 +41,11 @@ jobs:
           test -s "build/${version}.wasm"
           test -s "build/${version}.pck"
           touch build/.nojekyll
+      - name: Test actual Web build with two simultaneous touches
+        run: |
+          npm install --prefix /tmp/zmb-browser-test playwright@1.56.1
+          /tmp/zmb-browser-test/node_modules/.bin/playwright install --with-deps chromium
+          NODE_PATH=/tmp/zmb-browser-test/node_modules node tests/web_touch.cjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
