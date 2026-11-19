@@ -30,6 +30,19 @@ var scroll_dragged := false
 var swallow_scroll_release := false
 var menu_items: Dictionary = {}
 const UHD = "res://assets/uhd/"
+const ACTION_ART = {
+	"ATTACK":preload("res://assets/controls/actions/attack.png"),
+	"SKILL 1":preload("res://assets/controls/actions/skill1.png"),
+	"SKILL 2":preload("res://assets/controls/actions/skill2.png"),
+	"SKILL 3":preload("res://assets/controls/actions/skill3.png"),
+	"JUMP":preload("res://assets/controls/actions/jump.png"),
+	"DASH":preload("res://assets/controls/actions/dash.png"),
+	"LOOT":preload("res://assets/controls/actions/loot.png"),
+	"AUTO":preload("res://assets/controls/actions/auto.png"),
+	"MONSTER":preload("res://assets/controls/actions/monster.png"),
+	"PLAYER":preload("res://assets/controls/actions/player.png"),
+	"RUN":preload("res://assets/controls/actions/run.png"),
+}
 const INVENTORY_PAGES = ["Bag","Character","Storage","Skills"]
 var meter_fills: Array[TextureProgressBar] = []
 var character_values: Dictionary = {}
@@ -183,6 +196,22 @@ func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 		b.add_theme_font_size_override("font_size",12 if t in ["MONSTER","PLAYER"] else 16)
 		b.clip_text=true
 		b.set_deferred("size",config.get_value("size",t,s))
+	if ACTION_ART.has(t):
+		# Leave the original Button and key intact for input, settings and tests.
+		for state in ["font_color","font_hover_color","font_pressed_color","font_focus_color","font_hover_pressed_color","font_disabled_color"]:
+			b.add_theme_color_override(state,Color.TRANSPARENT)
+		var art := TextureRect.new()
+		art.texture=ACTION_ART[t]
+		art.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		b.add_child(art)
+		art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		art.offset_left=5
+		art.offset_top=5
+		art.offset_right=-5
+		art.offset_bottom=-5
+		b.tooltip_text=t
 	b.pressed.connect(action)
 	touch_actions[b] = action
 	root.add_child(b)
@@ -361,7 +390,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.15  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.16  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -381,7 +410,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.15","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.16","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
