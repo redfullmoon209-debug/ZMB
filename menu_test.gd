@@ -47,5 +47,31 @@ func run():
 	touch.position=drag.position
 	touch.pressed=false
 	root.push_input(touch,true)
+	for category in range(7):
+		hud.settings_category=category
+		hud.open_page("Settings")
+		await process_frame
+		assert(hud.panel.get_rect().end.x<=1280 and hud.panel.get_rect().end.y<=720)
+	hud.save_setting("camera_sensitivity",150)
+	assert(is_equal_approx(world.camera_sensitivity,1.5))
+	hud.save_setting("camera_sensitivity",100)
+	hud.start_editor()
+	await process_frame
+	var original: Vector2=hud.joystick.position
+	var p: Vector2=hud.joystick.get_global_rect().get_center()
+	touch.index=4
+	touch.pressed=true
+	touch.position=p
+	root.push_input(touch,true)
+	drag.index=4
+	drag.position=p+Vector2(20,-20)
+	root.push_input(drag,true)
+	assert(hud.joystick.position.distance_to(original+Vector2(20,-20))<1)
+	assert(world.stick==Vector2.ZERO)
+	touch.pressed=false
+	root.push_input(touch,true)
+	hud.finish_editor(false)
+	assert(hud.joystick.position==original)
+	print("PASS: seven categories, camera setting, HUD drag and cancel")
 	print("PASS: all ten right-to-left menu icons visible, selecting a category and dragging long menus works")
 	quit()

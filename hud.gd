@@ -30,6 +30,18 @@ var scroll_start_value := 0
 var scroll_dragged := false
 var swallow_scroll_release := false
 var menu_items: Dictionary = {}
+var settings_category := 0
+var hud_defaults: Dictionary = {}
+var editable_hud: Dictionary = {}
+var editor_panel: PanelContainer
+var editor_snapshot: Dictionary = {}
+var editor_selected: Control
+var editor_finger := -1
+var editor_offset := Vector2.ZERO
+var editor_size: HSlider
+var editor_alpha: HSlider
+var editor_title: Label
+var editor_refresh := false
 const UHD = "res://assets/uhd/"
 const ACTION_ART = {
 	"ATTACK":preload("res://assets/controls/actions/attack.png"),
@@ -167,9 +179,25 @@ func _ready():
 	chat.size=Vector2(420,40)
 	chat.modulate.a=0.35
 	chat.focus_entered.connect(func(): chat.modulate.a=1)
-	chat.focus_exited.connect(func(): chat.modulate.a=0.35)
+	chat.focus_exited.connect(func(): chat.modulate.a=float(config.get_value("opacity","CHAT",0.35)))
 	chat.text_submitted.connect(func(_s): chat.clear(); chat.release_focus())
 	root.add_child(chat)
+	for b in buttons: editable_hud[b.get_meta("hud_key")]=b
+	editable_hud["STATUS"]=stats
+	editable_hud["TARGET"]=target_label
+	editable_hud["ZONE"]=zone_label
+	editable_hud["CHAT"]=chat
+	editable_hud["MAP"]=minimap
+	for i in range(meter_fills.size()): editable_hud["METER %d"%i]=meter_fills[i]
+	for key in editable_hud:
+		var c: Control=editable_hud[key]
+		if not hud_defaults.has(key):
+			hud_defaults[key]=[c.position,c.scale,c.modulate.a]
+		c.position=config.get_value("position",key,c.position)
+		c.scale=config.get_value("scale",key,c.scale)
+		c.modulate.a=config.get_value("opacity",key,c.modulate.a)
+	apply_settings()
+	game.zoom=clampf(float(config.get_value("settings","zoom",10.0)),4.0,16.0)
 	open_page("Start")
 	if OS.has_feature("web"):
 		browser_window = JavaScriptBridge.get_interface("window")
@@ -187,6 +215,7 @@ func label(t: String,p:Vector2,s:Vector2) -> Label:
 func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	var b := Button.new()
 	b.text=t
+	hud_defaults[t]=[p,Vector2.ONE,0.82]
 	b.set_meta("hud_key",t)
 	b.position=config.get_value("position",t,p)
 	b.size=config.get_value("size",t,s)
@@ -321,12 +350,15 @@ func _camera_touch_drag(index: int, position: Vector2):
 	if index!=a and index!=b: return
 	var after: float=camera_touches[a].distance_to(camera_touches[b])
 	if before>8.0 and after>8.0:
-		game.zoom=clampf(game.zoom*before/after,4.0,16.0)
+		game.zoom=clampf(game.zoom*pow(before/after,game.zoom_sensitivity),4.0,16.0)
 
 func _modal_scroll_input(event: InputEvent) -> bool:
 	if not is_instance_valid(modal_scroll): return false
 	if event is InputEventScreenTouch:
 		if event.pressed and not event.canceled:
+			# Sliders own their touches; a vertical scroll must not steal them.
+			for child in modal_scroll.find_children("*","HSlider",true,false):
+				if child.get_global_rect().has_point(event.position): return false
 			var bar := modal_scroll.get_v_scroll_bar()
 			if scroll_finger==-1 and modal_scroll.get_global_rect().has_point(event.position) and bar.max_value-bar.page>1:
 				scroll_finger=event.index
@@ -358,6 +390,9 @@ func _modal_scroll_input(event: InputEvent) -> bool:
 
 func _input(event: InputEvent):
 	if not is_instance_valid(joystick):
+		return
+	if is_instance_valid(editor_panel):
+		if editor_input(event): get_viewport().set_input_as_handled()
 		return
 	# Godot's mouse emulation represents only one finger. HUD controls use
 	# actual touch indices instead, while popup menus still use mouse emulation.
@@ -403,7 +438,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.18  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.19  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -423,7 +458,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.17","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.19","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -717,6 +752,292 @@ func build_quick_menu():
 		row.add_child(b)
 		menu_items[key]=b
 
+func save_setting(key: String, value):
+	config.set_value("settings",key,value)
+	config.save("user://zmb.cfg")
+	apply_settings()
+
+func apply_settings():
+	Engine.max_fps=int(config.get_value("settings","fps",60))
+	get_viewport().scaling_3d_scale=float(config.get_value("settings","quality",1.0))
+	game.sun_light.shadow_enabled=bool(config.get_value("settings","shadows",true))
+	game.camera_sensitivity=float(config.get_value("settings","camera_sensitivity",100))/100.0
+	game.zoom_sensitivity=float(config.get_value("settings","zoom_sensitivity",100))/100.0
+	game.stick_deadzone=float(config.get_value("settings","deadzone",6))/100.0
+	game.auto_hp_threshold=int(config.get_value("settings","auto_hp",0))
+	game.auto_mp_threshold=int(config.get_value("settings","auto_mp",0))
+	game.auto_loot=bool(config.get_value("settings","auto_loot",true))
+	game.nearest_target_only=bool(config.get_value("settings","nearest",false))
+	for bus in ["Music","Combat","System"]:
+		if AudioServer.get_bus_index(bus)<0:
+			AudioServer.add_bus()
+			AudioServer.set_bus_name(AudioServer.bus_count-1,bus)
+		var idx := AudioServer.get_bus_index(bus)
+		var volume := float(config.get_value("settings",bus,100))/100.0
+		AudioServer.set_bus_mute(idx,volume<=0)
+		AudioServer.set_bus_volume_db(idx,linear_to_db(maxf(volume,0.001)))
+
+func setting_slider(parent: Node, title: String, key: String, low: float, high: float, initial: float, step: float=1.0):
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var caption := Label.new()
+	caption.text=title
+	caption.custom_minimum_size.x=230
+	row.add_child(caption)
+	var slider := HSlider.new()
+	slider.min_value=low
+	slider.max_value=high
+	slider.step=step
+	slider.value=float(config.get_value("settings",key,initial))
+	slider.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size.y=46
+	row.add_child(slider)
+	var value := Label.new()
+	value.custom_minimum_size.x=64
+	value.text=str(slider.value)
+	row.add_child(value)
+	slider.value_changed.connect(func(v): value.text=str(v);save_setting(key,v))
+
+func setting_toggle(parent: Node, title: String, key: String, initial: bool):
+	var check := CheckButton.new()
+	check.text=title
+	check.button_pressed=bool(config.get_value("settings",key,initial))
+	check.custom_minimum_size.y=46
+	parent.add_child(check)
+	check.toggled.connect(func(v):save_setting(key,v))
+
+func setting_choice(parent: Node,title: String,key: String,labels: Array,values: Array,initial):
+	add_text(parent,title)
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var group := ButtonGroup.new()
+	for i in range(labels.size()):
+		var b: Button=add_button(row,labels[i],func():save_setting(key,values[i]))
+		b.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		b.toggle_mode=true
+		b.button_group=group
+		b.button_pressed=config.get_value("settings",key,initial)==values[i]
+
+func build_settings(parent: VBoxContainer):
+	var horizontal := HBoxContainer.new()
+	horizontal.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	horizontal.add_theme_constant_override("separation",16)
+	parent.add_child(horizontal)
+	var nav := VBoxContainer.new()
+	nav.custom_minimum_size.x=255
+	nav.add_theme_constant_override("separation",7)
+	horizontal.add_child(nav)
+	var categories := [localized("กราฟิก","Graphics","画面"),localized("เสียง","Audio","声音"),localized("การควบคุม","Controls","控制"),localized("ปรับแต่ง HUD","HUD Editor","界面编辑"),localized("การต่อสู้","Combat","战斗"),localized("ภาษา","Language","语言"),localized("บัญชีผู้เล่น","Account","账号")]
+	for i in range(categories.size()):
+		var b: Button=add_button(nav,categories[i],func():settings_category=i;open_page("Settings"))
+		b.custom_minimum_size.y=52
+		if i==settings_category: b.add_theme_color_override("font_color",Color("ff9c8e"))
+	horizontal.add_child(VSeparator.new())
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.scroll_deadzone=12
+	horizontal.add_child(scroll)
+	modal_scroll=scroll
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation",10)
+	scroll.add_child(content)
+	add_text(content,categories[settings_category])
+	content.add_child(HSeparator.new())
+	match settings_category:
+		0:
+			setting_choice(content,localized("คุณภาพภาพ","Quality","画质"),"quality",[localized("ต่ำ","Low","低"),localized("กลาง","Medium","中"),localized("สูง","High","高")],[0.6,0.8,1.0],1.0)
+			setting_choice(content,"FPS","fps",["30","60","90","120"],[30,60,90,120],60)
+			setting_toggle(content,localized("เงา","Shadows","阴影"),"shadows",true)
+			setting_toggle(content,localized("เอฟเฟกต์ (เตรียมไว้)","Effects (reserved)","特效（预留）"),"effects",true)
+			add_text(content,localized("FPS จริงขึ้นกับอุปกรณ์","Actual FPS depends on device","实际帧率取决于设备"))
+		1:
+			setting_slider(content,localized("เพลงพื้นหลัง","Music","音乐"),"Music",0,100,100)
+			setting_slider(content,localized("เสียงต่อสู้","Combat sounds","战斗音效"),"Combat",0,100,100)
+			setting_slider(content,localized("เสียงระบบ","System sounds","系统音效"),"System",0,100,100)
+			add_text(content,localized("บันทึกค่าพร้อมรองรับเสียงในอนาคต","Saved for future audio assets","设置将用于未来音频"))
+		2:
+			setting_slider(content,localized("ความไวกล้อง","Camera sensitivity","镜头灵敏度"),"camera_sensitivity",10,200,100)
+			setting_slider(content,localized("ความไวซูม","Zoom sensitivity","缩放灵敏度"),"zoom_sensitivity",10,200,100)
+			setting_slider(content,localized("ระยะนิ่งจอย (%)","Joystick deadzone (%)","摇杆死区 (%)"),"deadzone",0,30,6)
+			add_text(content,localized("ระยะกล้อง","Camera distance","镜头距离"))
+			var zoom_slider := HSlider.new()
+			zoom_slider.min_value=4
+			zoom_slider.max_value=16
+			zoom_slider.step=0.1
+			zoom_slider.value=game.zoom
+			zoom_slider.custom_minimum_size.y=44
+			zoom_slider.value_changed.connect(func(v):game.zoom=v;save_setting("zoom",v))
+			content.add_child(zoom_slider)
+		3:
+			add_text(content,localized("ลากปุ่มบนหน้าจอจริง ปรับขนาดและความโปร่งใสแยกกัน","Drag each HUD element; adjust size and opacity","拖动界面元素并调整大小和透明度"))
+			add_button(content,localized("เข้าสู่โหมดปรับแต่ง HUD","Open HUD Editor","编辑界面"),start_editor)
+		4:
+			var auto_check := CheckButton.new()
+			auto_check.text="Auto Hunt"
+			auto_check.button_pressed=game.auto
+			auto_check.toggled.connect(func(v):game.auto=v and not game.in_safe_zone())
+			content.add_child(auto_check)
+			setting_toggle(content,localized("เก็บของอัตโนมัติขณะ Auto Hunt","Auto loot while hunting","自动拾取"),"auto_loot",true)
+			setting_toggle(content,localized("เลือกเป้าหมายใกล้สุดเสมอ","Always select nearest target","优先最近目标"),"nearest",false)
+			setting_slider(content,localized("ใช้ยา HP (%), 0 = ปิด","Auto HP (%), 0 = off","自动生命药 (%)"),"auto_hp",0,100,0)
+			setting_slider(content,localized("ใช้ยา MP (%), 0 = ปิด","Auto MP (%), 0 = off","自动法力药 (%)"),"auto_mp",0,100,0)
+		5:
+			for i in range(3):
+				var b: Button=add_button(content,["ไทย","English","简体中文"][i],func():lang=i;config.set_value("ui","lang",lang);config.save("user://zmb.cfg");open_page("Settings"))
+				if i==lang: b.add_theme_color_override("font_color",Color("ff9c8e"))
+		6:
+			add_text(content,localized("บัญชีทดสอบออฟไลน์","Offline test account","离线测试账号"))
+			add_text(content,"LV %d  •  %s"%[game.level,format_playtime(game.total_play_seconds())])
+			add_button(content,localized("กลับหน้าล็อบบี้","Return to lobby","返回大厅"),func():
+				game.save_playtime()
+				game.session_started_msec=-1
+				game.started=false
+				game.auto=false
+				game.stick=Vector2.ZERO
+				open_page("Start"))
+	add_text(content,localized("บันทึกการตั้งค่าอัตโนมัติ","Settings are saved automatically","自动保存设置"))
+	# Keep content scrollable on short screens, including the graphics help text.
+	var space := Control.new()
+	space.custom_minimum_size.y=180
+	content.add_child(space)
+
+func start_editor():
+	close_page()
+	_reset_touches()
+	game.auto=false
+	editor_snapshot.clear()
+	for key in editable_hud:
+		var c: Control=editable_hud[key]
+		editor_snapshot[key]=[c.position,c.scale,c.modulate.a]
+	editor_panel=PanelContainer.new()
+	editor_panel.position=Vector2(390,130)
+	editor_panel.size=Vector2(500,280)
+	editor_panel.z_index=20
+	root.add_child(editor_panel)
+	var col := VBoxContainer.new()
+	editor_panel.add_child(col)
+	editor_title=Label.new()
+	editor_title.text=localized("แตะปุ่มเพื่อเลือก แล้วลากเพื่อย้าย","Tap a HUD element, then drag","点击界面元素并拖动")
+	col.add_child(editor_title)
+	var picker := OptionButton.new()
+	var keys := editable_hud.keys()
+	for key in keys: picker.add_item(key)
+	picker.select(keys.find("◉"))
+	picker.item_selected.connect(func(i):select_editor_item(editable_hud[keys[i]]))
+	col.add_child(picker)
+	add_text(col,localized("ขนาด","Size","大小"))
+	editor_size=HSlider.new()
+	editor_size.min_value=0.4
+	editor_size.max_value=1.8
+	editor_size.step=0.05
+	editor_size.custom_minimum_size.y=36
+	col.add_child(editor_size)
+	editor_size.value_changed.connect(func(v):
+		if is_instance_valid(editor_selected) and not editor_refresh:
+			editor_selected.scale=Vector2.ONE*v
+			clamp_editor_control(editor_selected))
+	add_text(col,localized("ความโปร่งใส","Opacity","透明度"))
+	editor_alpha=HSlider.new()
+	editor_alpha.min_value=0.2
+	editor_alpha.max_value=1
+	editor_alpha.step=0.05
+	editor_alpha.custom_minimum_size.y=36
+	col.add_child(editor_alpha)
+	editor_alpha.value_changed.connect(func(v):
+		if is_instance_valid(editor_selected) and not editor_refresh: editor_selected.modulate.a=v)
+	var row := HBoxContainer.new()
+	col.add_child(row)
+	add_button(row,localized("คืนค่าปุ่ม","Reset item","重置元素"),func():
+		for key in editable_hud:
+			if editable_hud[key]==editor_selected: restore_editor_item(key,hud_defaults[key]))
+	add_button(row,localized("คืนค่าทั้งหมด","Reset all","全部重置"),func():
+		for key in editable_hud: restore_editor_item(key,hud_defaults[key]))
+	var actions := HBoxContainer.new()
+	col.add_child(actions)
+	add_button(actions,localized("ยกเลิก","Cancel","取消"),func():finish_editor(false))
+	add_button(actions,localized("บันทึก","Save","保存"),func():finish_editor(true))
+	select_editor_item(joystick)
+
+func select_editor_item(c: Control):
+	editor_selected=c
+	editor_refresh=true
+	for key in editable_hud:
+		if editable_hud[key]==c: editor_title.text=key
+	editor_size.value=c.scale.x
+	editor_alpha.value=c.modulate.a
+	editor_refresh=false
+
+func clamp_editor_control(c: Control):
+	c.position=c.position.clamp(Vector2.ZERO,(Vector2(1280,720)-c.size*c.scale).max(Vector2.ZERO))
+
+func restore_editor_item(key: String, data: Array):
+	var c: Control=editable_hud[key]
+	c.position=data[0]
+	c.scale=data[1]
+	c.modulate.a=data[2]
+	if c==editor_selected: select_editor_item(c)
+
+func finish_editor(commit: bool):
+	for key in editable_hud:
+		var c: Control=editable_hud[key]
+		if commit:
+			config.set_value("position",key,c.position)
+			config.set_value("scale",key,c.scale)
+			config.set_value("opacity",key,c.modulate.a)
+		else: restore_editor_item(key,editor_snapshot[key])
+	if commit: config.save("user://zmb.cfg")
+	editor_panel.queue_free()
+	editor_panel=null
+	editor_selected=null
+	editor_finger=-1
+	open_page("Settings")
+
+func editor_input(event: InputEvent) -> bool:
+	if event is InputEventMouse and event.device==InputEvent.DEVICE_ID_EMULATION:
+		return editor_finger!=-1 or not editor_panel.get_global_rect().has_point(event.position)
+	var pos := Vector2.ZERO
+	var finger := -2
+	var pressed := false
+	var release := false
+	var drag := false
+	if event is InputEventScreenTouch:
+		pos=event.position
+		finger=event.index
+		pressed=event.pressed
+		release=not event.pressed
+	elif event is InputEventScreenDrag:
+		pos=event.position
+		finger=event.index
+		drag=true
+	elif event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
+		pos=event.position
+		pressed=event.pressed
+		release=not event.pressed
+	elif event is InputEventMouseMotion:
+		pos=event.position
+		drag=true
+	else: return true
+	if release and editor_finger==finger:
+		editor_finger=-1
+		return true
+	if drag and editor_finger==finger and is_instance_valid(editor_selected):
+		editor_selected.position=pos-editor_offset
+		clamp_editor_control(editor_selected)
+		return true
+	if editor_panel.get_global_rect().has_point(pos): return false
+	if pressed:
+		var items := editable_hud.values()
+		items.reverse()
+		for c in items:
+			if c.get_global_rect().has_point(pos):
+				select_editor_item(c)
+				editor_finger=finger
+				editor_offset=pos-c.position
+				break
+	return true
+
 func open_page(page:String):
 	if page=="Menu" and selected_page=="Menu":
 		close_page()
@@ -734,6 +1055,9 @@ func open_page(page:String):
 	panel.position=Vector2(175,100)
 	panel.size=Vector2(930,520)
 	if page in INVENTORY_PAGES:
+		panel.position=Vector2(40,28)
+		panel.size=Vector2(1200,664)
+	if page=="Settings":
 		panel.position=Vector2(40,28)
 		panel.size=Vector2(1200,664)
 	panel.z_index=10
@@ -775,6 +1099,9 @@ func open_page(page:String):
 		close_button.custom_minimum_size=Vector2(44,44)
 	if page in INVENTORY_PAGES:
 		body.add_child(HSeparator.new())
+	if page=="Settings":
+		build_settings(body)
+		return
 	var scroll := ScrollContainer.new()
 	modal_scroll=scroll
 	scroll.scroll_deadzone=12
@@ -790,40 +1117,6 @@ func open_page(page:String):
 			add_button(content,"Female warrior",func():game.begin(false);close_page())
 		"Bag","Storage","Character","Skills":
 			build_inventory_page(content,page)
-		"Settings":
-			add_text(content,localized("ซูมกล้อง","Camera zoom","镜头缩放"))
-			var zoom_slider := HSlider.new()
-			zoom_slider.min_value=4.0
-			zoom_slider.max_value=16.0
-			zoom_slider.step=0.1
-			zoom_slider.value=game.zoom
-			zoom_slider.custom_minimum_size.y=36
-			zoom_slider.value_changed.connect(func(v):game.zoom=v)
-			content.add_child(zoom_slider)
-			add_text(content,"HUD Editor • position / size / opacity")
-			for b in buttons:
-				var row := HBoxContainer.new()
-				content.add_child(row)
-				add_text(row,b.text)
-				for axis in ["X","Y","Scale","Alpha"]:
-					add_text(row,axis)
-					var spin := SpinBox.new()
-					spin.min_value=0.2 if axis=="Scale" or axis=="Alpha" else 0
-					spin.max_value=2 if axis=="Scale" else (1 if axis=="Alpha" else 1280)
-					spin.step=0.05 if axis in ["Scale","Alpha"] else 5
-					spin.value=b.position.x if axis=="X" else (b.position.y if axis=="Y" else (b.scale.x if axis=="Scale" else b.modulate.a))
-					spin.value_changed.connect(func(v):
-						match axis:
-							"X": b.position.x=v
-							"Y": b.position.y=v
-							"Scale": b.scale=Vector2.ONE*v
-							"Alpha": b.modulate.a=v
-						var key: String=b.get_meta("hud_key",b.text)
-						config.set_value("position",key,b.position)
-						config.set_value("opacity",key,b.modulate.a)
-						config.set_value("scale",key,b.scale)
-						config.save("user://zmb.cfg"))
-					row.add_child(spin)
 		"Revive":
 			add_text(content,"You fell to the spirit plague.")
 			add_button(content,"Revive",func():game.revive(); close_page())

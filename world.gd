@@ -23,6 +23,15 @@ var cooldown := 0.0
 var yaw := 0.0
 var pitch := deg_to_rad(28.0)
 var zoom := 10.0
+var camera_sensitivity := 1.0
+var zoom_sensitivity := 1.0
+var stick_deadzone := 0.06
+var auto_hp_threshold := 0
+var auto_mp_threshold := 0
+var auto_loot := true
+var auto_potion_cooldown := 0.0
+var nearest_target_only := false
+var sun_light: DirectionalLight3D
 var camera_arm_distance := -1.0
 var camera_follow := false
 var follow_input_active := false
@@ -71,6 +80,7 @@ func _ready():
 	sun.light_energy = 1.3
 	sun.shadow_enabled = true
 	add_child(sun)
+	sun_light=sun
 	box(Vector3(0,-0.5,0),Vector3(90,1,90),Color("3c4d3e"),self)
 	var floor_body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
@@ -239,7 +249,7 @@ func choose_target():
 	sorted.sort_custom(func(a,b): return a.position.distance_squared_to(player.position)<b.position.distance_squared_to(player.position))
 	if sorted.is_empty():
 		return
-	target = sorted[(sorted.find(target)+1)%sorted.size()]
+	target = sorted[0] if nearest_target_only else sorted[(sorted.find(target)+1)%sorted.size()]
 
 func attack(skill: int):
 	if not started or hp<=0 or cooldown>0 or in_safe_zone():
@@ -297,10 +307,11 @@ func rotate_camera(relative: Vector2):
 	# Vertical orbit is available in both modes. Follow mode owns horizontal
 	# heading, so dragging sideways never breaks the behind-character lock.
 	if not camera_follow:
-		yaw=wrapf(yaw-relative.x*0.007,-PI,PI)
-	pitch=clampf(pitch-relative.y*0.007,deg_to_rad(-8.0),deg_to_rad(78.0))
+		yaw=wrapf(yaw-relative.x*0.007*camera_sensitivity,-PI,PI)
+	pitch=clampf(pitch-relative.y*0.007*camera_sensitivity,deg_to_rad(-8.0),deg_to_rad(78.0))
 
 func movement_vector(input: Vector2) -> Vector3:
+	if input.length()<stick_deadzone: input=Vector2.ZERO
 	var movement_yaw := yaw
 	if camera_follow:
 		# Keep a held joystick's reference stable while the camera turns behind
@@ -343,8 +354,8 @@ func update_camera(delta: float):
 func _unhandled_input(event):
 	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT): rotate_camera(event.relative)
 	if event is InputEventMouseButton and event.pressed:
-		if event.button_index==MOUSE_BUTTON_WHEEL_UP: zoom=maxf(4,zoom-1)
-		if event.button_index==MOUSE_BUTTON_WHEEL_DOWN: zoom=minf(16,zoom+1)
+		if event.button_index==MOUSE_BUTTON_WHEEL_UP: zoom=maxf(4,zoom-zoom_sensitivity)
+		if event.button_index==MOUSE_BUTTON_WHEEL_DOWN: zoom=minf(16,zoom+zoom_sensitivity)
 		if event.button_index==MOUSE_BUTTON_LEFT and not in_safe_zone():
 			var nearest := 65.0
 			for n in enemies:
@@ -375,6 +386,14 @@ func _physics_process(delta: float):
 		update_camera(delta)
 		return
 	cooldown=maxf(0,cooldown-delta)
+	auto_potion_cooldown=maxf(0,auto_potion_cooldown-delta)
+	if not in_safe_zone() and auto_potion_cooldown<=0:
+		if auto_hp_threshold>0 and hp<=auto_hp_threshold:
+			hp=minf(100,hp+35)
+			auto_potion_cooldown=5.0
+		elif auto_mp_threshold>0 and mp<=auto_mp_threshold:
+			mp=minf(100,mp+35)
+			auto_potion_cooldown=5.0
 	dash_time=maxf(0,dash_time-delta)
 	mp=minf(100,mp+delta*2)
 	var input := stick
@@ -392,7 +411,7 @@ func _physics_process(delta: float):
 			var diff := target.position-player.position
 			if diff.length()>2.2: move=Vector3(diff.x,0,diff.z).normalized()
 			else: attack(0)
-		collect()
+		if auto_loot: collect()
 	var speed := 8.0 if run_mode else 4.5
 	if dash_time>0: speed=18
 	player.velocity.x=move.x*speed
