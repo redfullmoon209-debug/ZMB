@@ -294,7 +294,7 @@ func _process(delta):
 		meter_fills[0].value=game.hp
 		meter_fills[1].value=game.mp
 		meter_fills[2].value=game.xp
-	stats.text="ZMB v0.1.8  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
+	stats.text="ZMB v0.1.9  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	camera_mode_button.text=(["กล้อง: ตามหลัง","CAM: FOLLOW","镜头：跟随"][lang] if game.camera_follow else ["กล้อง: อิสระ","CAM: FREE","镜头：自由"][lang])
 	var safe: bool = game.in_safe_zone()
 	zone_label.text=(["เขตปลอดภัย • ฟื้นฟู HP/MP","SAFE ZONE • HP/MP recovery","安全区 • 恢复生命与法力"][lang] if safe else ["เขตล่ามอนสเตอร์ • LV 1+","HUNTING ZONE • LV 1+","狩猎区 • LV 1+"][lang])
@@ -314,7 +314,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.8","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.9","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -344,7 +344,7 @@ func add_text(parent:Node,t:String):
 
 func language_menu(parent: Node, page: String):
 	var button := MenuButton.new()
-	button.text=localized("ภาษา","Language","语言")+" ▾"
+	button.text=localized("ภาษา","Language","语言")
 	button.custom_minimum_size=Vector2(120,44)
 	parent.add_child(button)
 	var popup := button.get_popup()
@@ -450,7 +450,7 @@ func build_inventory_page(content: Node, page: String):
 	var left := VBoxContainer.new()
 	var right := VBoxContainer.new()
 	for column in [left,right]:
-		column.custom_minimum_size.x=530
+		column.custom_minimum_size.x=490
 		column.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		column.add_theme_constant_override("separation",8)
 	row.add_child(left)
@@ -547,13 +547,19 @@ func open_page(page:String):
 		panel.position=Vector2(60,40)
 		panel.size=Vector2(1160,640)
 	panel.z_index=10
+	panel.clip_contents=true
 	var popup_style := StyleBoxTexture.new()
 	popup_style.texture=preload("res://assets/uhd/popup.png")
 	for side in [SIDE_LEFT,SIDE_TOP,SIDE_RIGHT,SIDE_BOTTOM]:
 		popup_style.set_content_margin(side,1)
 	panel.add_theme_stylebox_override("panel",popup_style)
 	var margin := MarginContainer.new()
-	for side in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+side,18)
+	# The original PNG includes transparent padding above and below its frame.
+	# Inset controls past the visible metal border, not just the texture bounds.
+	margin.add_theme_constant_override("margin_left",28)
+	margin.add_theme_constant_override("margin_right",28)
+	margin.add_theme_constant_override("margin_top",44)
+	margin.add_theme_constant_override("margin_bottom",44)
 	panel.add_child(margin)
 	body=VBoxContainer.new()
 	margin.add_child(body)
@@ -569,7 +575,9 @@ func open_page(page:String):
 			tab.custom_minimum_size=Vector2(110,44)
 			if key==page: tab.add_theme_color_override("font_color",Color("ff9c8e"))
 	language_menu(header,page)
-	if page not in ["Start","Revive"]: close_button=add_button(header,"✕",close_page)
+	if page not in ["Start","Revive"]:
+		close_button=add_button(header,"×",close_page)
+		close_button.custom_minimum_size=Vector2(44,44)
 	var scroll := ScrollContainer.new()
 	modal_scroll=scroll
 	scroll.scroll_deadzone=12

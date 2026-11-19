@@ -18,6 +18,11 @@ func run():
 			var rect: Rect2=hud.panel.get_global_rect()
 			assert(rect.end.x<=1280 and rect.end.y<=720)
 			var header: HBoxContainer=hud.body.get_child(0)
+			var interior := rect.grow(-28.0)
+			assert(interior.encloses(header.get_global_rect()))
+			assert(interior.encloses(hud.modal_scroll.get_global_rect()))
+			for control in header.get_children():
+				assert(interior.encloses(control.get_global_rect()))
 			var lang_button: MenuButton=header.get_child(5)
 			assert(lang_button.get_popup().item_count==3)
 			var row: HBoxContainer=hud.modal_scroll.get_child(0).get_child(0)

@@ -1,5 +1,9 @@
 # ZMB v0.1 — Offline prototype
 
+## v0.1.9 — Popup frame containment
+
+All popup controls are inset past the visible artwork border, with extra top/bottom clearance for transparent PNG padding, clipped content and compact equal inventory columns. Language and close controls stay inside the frame; the inventory regression checks the header and scrolling area bounds across all three languages.
+
 ## v0.1.8 — Inventory layout and language picker
 
 Bag, Character, Storage and Skills share a wider modal with top navigation and a three-language dropdown. Bag splits equipment and the current 3D player preview from the 48-slot inventory; accessories are smaller and the loot-pet slot is included. Storage and equipment remain preview-only pending their gameplay backend. Bundled Thai and simplified Chinese UI fonts prevent missing glyphs. The existing player model, world and control routing are unchanged.
