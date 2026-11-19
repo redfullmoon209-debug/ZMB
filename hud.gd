@@ -13,11 +13,9 @@ var buttons: Array[Button] = []
 var touch_actions: Dictionary = {}
 var captured_touches: Dictionary = {}
 var joystick_finger := -1
-var web_bridge_ready := false
 var web_diagnostics := false
 var diagnostic_timer := 0.0
 var browser_window: JavaScriptObject
-var web_drag_positions: Dictionary = {}
 var start_button: Button
 var config := ConfigFile.new()
 var names := {"Bag":["กระเป๋า","Bag","背包"],"Storage":["คลัง","Storage","仓库"],"Character":["ตัวละคร","Character","角色"],"Skills":["สกิล","Skills","技能"],"Market":["ตลาดโลก","Market","市场"],"Shop":["ร้านค้า","Shop","商店"],"Quest":["เควส","Quest","任务"],"Social":["สังคม","Social","社交"],"Ranking":["อันดับ","Ranking","排行"],"News":["ประกาศ","News","公告"],"Settings":["ตั้งค่า","Settings","设置"],"Trade":["แลกเปลี่ยน","Trade","交易"],"Map":["แผนที่","Map","地图"]}
@@ -80,7 +78,9 @@ func _ready():
 	root.add_child(chat)
 	open_page("Start")
 	if OS.has_feature("web"):
-		_install_web_touch()
+		browser_window = JavaScriptBridge.get_interface("window")
+		web_diagnostics = true
+		print("ZMB native touch controls ready")
 
 func label(t: String,p:Vector2,s:Vector2) -> Label:
 	var l := Label.new()
@@ -104,7 +104,7 @@ func make_button(t:String,p:Vector2,s:Vector2,action:Callable) -> Button:
 	return b
 
 func _stick_event(e):
-	if joystick_finger >= 0 or (_web_capture_active() and e.device == InputEvent.DEVICE_ID_EMULATION):
+	if joystick_finger >= 0:
 		return
 	if e is InputEventMouseButton:
 		game.stick=Vector2.ZERO if not e.pressed else ((e.position-joystick.size/2)/70.0).limit_length()
@@ -115,72 +115,6 @@ func _set_touch_stick(pos: Vector2):
 	var rect := joystick.get_global_rect()
 	game.stick = ((pos - rect.get_center()) / maxf(1.0, minf(rect.size.x, rect.size.y) * 0.46)).limit_length()
 
-func _install_web_touch():
-	# Queue native events without taking over the canvas or calling into WASM
-	# from inside a DOM callback. Godot drains the queue on its own frame.
-	browser_window = JavaScriptBridge.get_interface("window")
-	var installed = JavaScriptBridge.eval("""
-	(() => {
-	  const canvas = document.querySelector('canvas');
-	  if (!canvas) return false;
-	  if (window.zmbTouchDrain) return true;
-	  canvas.style.touchAction = 'none';
-	  const active = new Set();
-	  const queue = [];
-	  window.zmbTouchActive = false;
-	  window.zmbTouchDrain = () => JSON.stringify(queue.splice(0));
-	  const route = (event) => {
-	    const phase = event.type.slice(5);
-	    const rect = canvas.getBoundingClientRect();
-	    let handled = false;
-	    for (const touch of Array.from(event.changedTouches)) {
-	      const id = touch.identifier;
-	      const x = (touch.clientX - rect.left) / rect.width;
-	      const y = (touch.clientY - rect.top) / rect.height;
-	      if (phase === 'start') {
-	        if (!window.zmbGameplay || !window.zmbTouchReady || touch.target !== canvas) continue;
-	        const c = window.zmbChatRect;
-	        if (c && x >= c[0] && x <= c[2] && y >= c[1] && y <= c[3]) continue;
-	        active.add(id);
-	      } else if (!active.has(id)) continue;
-	      queue.push([phase, id, x, y]);
-	      handled = true;
-	      if (phase === 'end' || phase === 'cancel') active.delete(id);
-	    }
-	    if (handled && event.cancelable) event.preventDefault();
-	    window.zmbTouchActive = active.size > 0;
-	    // Never stop propagation: the native Godot input path remains available
-	    // if the browser integration has to fall back.
-	  };
-	  for (const type of ['touchstart','touchmove','touchend','touchcancel']) {
-	    window.addEventListener(type, route, {capture:true, passive:false});
-	  }
-	  const reset = () => {
-	    active.clear();
-	    window.zmbTouchActive = false;
-	    queue.push(['reset', -1, 0, 0]);
-	  };
-	  window.addEventListener('blur', reset);
-	  document.addEventListener('visibilitychange', () => { if(document.hidden) reset(); });
-	  return true;
-	})();
-	""", true)
-	web_bridge_ready = installed == true and JavaScriptBridge.eval("typeof window.zmbTouchDrain === 'function'", true) == true
-	web_diagnostics = OS.has_feature("web")
-	print("ZMB touch bridge ready: ",web_bridge_ready)
-	if not web_bridge_ready:
-		return
-	JavaScriptBridge.eval("window.zmbTouchReady = true", true)
-	_sync_web_touch()
-	get_viewport().size_changed.connect(_sync_web_touch)
-
-func _sync_web_touch():
-	if not web_bridge_ready:
-		return
-	var active: bool = game.started and not is_instance_valid(panel)
-	var rect := _web_rect(chat)
-	JavaScriptBridge.eval("window.zmbGameplay = %s; window.zmbChatRect = %s" % ["true" if active else "false", JSON.stringify(rect)], true)
-
 func _web_rect(control: Control) -> Array:
 	# Canvas stretch includes letterbox offsets on wide phones. Convert both
 	# corners to actual window pixels before normalizing to DOM coordinates.
@@ -190,46 +124,6 @@ func _web_rect(control: Control) -> Array:
 	var first := (transform * rect.position) / window_size
 	var last := (transform * rect.end) / window_size
 	return [first.x, first.y, last.x, last.y]
-
-func _poll_web_touch():
-	if not web_bridge_ready:
-		return
-	var data = JavaScriptBridge.eval("window.zmbTouchDrain()", true)
-	if not data is String:
-		web_bridge_ready = false
-		JavaScriptBridge.eval("window.zmbTouchReady = false", true)
-		_reset_touches()
-		return
-	var entries = JSON.parse_string(data)
-	if entries is Array:
-		for entry in entries:
-			if entry is Array: _web_touch(entry)
-
-func _web_capture_active() -> bool:
-	return web_bridge_ready and JavaScriptBridge.eval("window.zmbTouchActive === true", true) == true
-
-func _web_touch(args: Array):
-	if args.size() < 4:
-		return
-	var phase := str(args[0])
-	var index := int(args[1])
-	var window_pos := Vector2(float(args[2]), float(args[3])) * Vector2(get_window().size)
-	var pos := get_viewport().get_final_transform().affine_inverse() * window_pos
-	match phase:
-		"start":
-			if not _touch_start(index, pos):
-				web_drag_positions[index] = pos
-		"move":
-			if not _touch_move(index, pos) and web_drag_positions.has(index):
-				var previous: Vector2 = web_drag_positions[index]
-				if pos.x > get_viewport().get_visible_rect().size.x * 0.35:
-					game.yaw -= (pos.x - previous.x) * 0.007
-				web_drag_positions[index] = pos
-		"end", "cancel":
-			_touch_end(index)
-			web_drag_positions.erase(index)
-		"reset":
-			_reset_touches()
 
 func _touch_start(index: int, pos: Vector2) -> bool:
 	if is_instance_valid(panel) or not game.started:
@@ -272,7 +166,6 @@ func _touch_end(index: int) -> bool:
 
 func _reset_touches():
 	captured_touches.clear()
-	web_drag_positions.clear()
 	joystick_finger = -1
 	game.stick = Vector2.ZERO
 
@@ -282,11 +175,8 @@ func _input(event: InputEvent):
 	# Godot's mouse emulation represents only one finger. HUD controls use
 	# actual touch indices instead, while popup menus still use mouse emulation.
 	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
-		if not captured_touches.is_empty() or (_web_capture_active() and not is_instance_valid(panel) and not chat.get_global_rect().has_point(event.position)):
+		if not captured_touches.is_empty():
 			get_viewport().set_input_as_handled()
-		return
-	if _web_capture_active() and not is_instance_valid(panel) and (event is InputEventScreenTouch or event is InputEventScreenDrag):
-		if not chat.get_global_rect().has_point(event.position): get_viewport().set_input_as_handled()
 		return
 	if event is InputEventScreenTouch:
 		if not event.pressed or event.canceled:
@@ -304,7 +194,6 @@ func _notification(what: int):
 
 func _process(delta):
 	if not is_instance_valid(stats): return
-	_poll_web_touch()
 	stats.text="ZMB v0.1.3  |  LV %d  |  Touch %d\nHP %d / 100    MP %d / 100\nEXP %d / 100   Gold %d"%[game.level,captured_touches.size(),game.hp,game.mp,game.xp,game.coins]
 	if is_instance_valid(game.target): target_label.text="%s • HP %d"%[["Normal","Elite","Boss"][game.target.get_meta("tier")],game.target.get_meta("hp")]
 	elif game.auto: target_label.text="AUTO HUNT"
@@ -317,7 +206,7 @@ func _process(delta):
 		var controls := {}
 		for b in buttons: controls[b.text] = _web_rect(b)
 		if is_instance_valid(start_button): controls["START"] = _web_rect(start_button)
-		var d := {"version":"0.1.3","ready":web_bridge_ready,"started":game.started,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.3","ready":true,"started":game.started,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
@@ -326,7 +215,6 @@ func close_page():
 	if is_instance_valid(panel): panel.queue_free()
 	panel=null
 	selected_page=""
-	_sync_web_touch()
 
 func add_button(parent:Node,t:String,action:Callable):
 	var b := Button.new()
@@ -360,7 +248,6 @@ func open_page(page:String):
 	selected_page=page
 	panel=PanelContainer.new()
 	root.add_child(panel)
-	_sync_web_touch()
 	panel.position=Vector2(175,100)
 	panel.size=Vector2(930,520)
 	panel.z_index=10

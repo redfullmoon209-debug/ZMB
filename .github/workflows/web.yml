@@ -31,6 +31,7 @@ jobs:
           godot --headless --editor --import --quit
           godot --headless --quit-after 120 2>&1 | tee /tmp/smoke.log
           if grep -E 'SCRIPT ERROR|Parse Error' /tmp/smoke.log; then exit 1; fi
+          timeout 20s godot --headless --script multitouch_test.gd
       - name: Export Web
         run: |
           mkdir -p build
