@@ -97,6 +97,8 @@ var character_name := "Warrior"
 var player_visual: Node3D
 var attack_anim: Tween
 var attack_pose_count := 0
+var pending_skill := -1
+var pending_target: Node3D
 var critical_chance := 0.10
 const CRITICAL_MULTIPLIER := 1.5
 var session_started_msec := -1
@@ -432,7 +434,7 @@ func choose_target():
 	if in_safe_zone():
 		target=null
 		return
-	var sorted := enemies.filter(func(n): return is_instance_valid(n))
+	var sorted := enemies.filter(func(n): return combat_target_valid(n))
 	sorted.sort_custom(func(a,b): return a.position.distance_squared_to(player.position)<b.position.distance_squared_to(player.position))
 	if sorted.is_empty():
 		return
@@ -532,23 +534,46 @@ func deal_damage(victim: Node3D, skill: int):
 	victim.set_meta("hp",maxf(0,float(victim.get_meta("hp"))-amount))
 	if amount>0: show_damage_number(victim.position+Vector3.UP*(2.35*victim.scale.y),amount,critical)
 
+func combat_target_valid(victim: Node3D) -> bool:
+	return is_instance_valid(victim) and not victim.is_queued_for_deletion() and victim.get_meta("hp",0)>0 and not is_safe_position(victim.position) and (enemies.has(victim) or demo_players.has(victim))
+
+func attack_range(skill: int) -> float:
+	return [2.7,5.5,12.0][weapon]+skill
+
+func cancel_attack():
+	pending_skill=-1
+	pending_target=null
+
 func attack(skill: int):
-	if not started or hp<=0 or cooldown>0 or skill<0 or skill>3:
+	if not started or hp<=0 or skill<0 or skill>3 or in_safe_zone() or mp<skill*5: return
+	if not combat_target_valid(target):
+		target=null
+		choose_target()
+	if not combat_target_valid(target): return
+	follow_player=null
+	pending_skill=skill
+	pending_target=target
+	try_pending_attack()
+
+func try_pending_attack():
+	if pending_skill<0: return
+	if not started or hp<=0 or in_safe_zone() or not combat_target_valid(pending_target) or pending_target!=target or mp<pending_skill*5:
+		cancel_attack()
 		return
-	if mp < skill*5: return
-	# Preview the swing even without an enemy; safe zones never take damage.
-	cooldown = (0.45+skill*0.2)/gm_attack_multiplier
-	play_attack_pose(skill)
-	if in_safe_zone(): return
-	if not is_instance_valid(target): choose_target()
-	if not is_instance_valid(target): return
-	if is_safe_position(target.position): return
-	var ranges := [2.7,5.5,12.0]
-	if player.position.distance_to(target.position)>ranges[weapon]+skill: return
+	var skill := pending_skill
+	if cooldown>0 or player.position.distance_to(target.position)>attack_range(skill): return
+	if roundi(attack_power()+skill*7)<=0: cancel_attack();return
+	var ray := PhysicsRayQueryParameters3D.create(player.position+Vector3.UP, target.position+Vector3.UP)
+	ray.exclude=[player.get_rid()]
+	if not get_world_3d().direct_space_state.intersect_ray(ray).is_empty(): cancel_attack();return
+	# Consume the queued action only once a valid hit is possible.
+	cancel_attack()
 	var direction := target.position-player.position
 	if Vector2(direction.x,direction.z).length()>0.01:
 		player_visual.rotation.y=atan2(direction.x,direction.z)
 	mp -= skill*5
+	cooldown = (0.45+skill*0.2)/gm_attack_multiplier
+	play_attack_pose(skill)
 	if is_demo_target(target):
 		var dummy := target
 		deal_damage(dummy,skill)
@@ -563,7 +588,7 @@ func attack(skill: int):
 	var hits := [target]
 	if skill==3:
 		for n in enemies:
-			if n!=target and not is_safe_position(n.position) and n.position.distance_to(target.position)<3: hits.append(n)
+			if n!=target and combat_target_valid(n) and player.position.distance_to(n.position)<=attack_range(skill) and n.position.distance_to(target.position)<3: hits.append(n)
 	for n in hits:
 		deal_damage(n,skill)
 		if n.get_meta("hp")<=0:
@@ -641,6 +666,7 @@ func claim_quest(id: String) -> bool:
 	return true
 
 func revive():
+	cancel_attack()
 	if attack_anim and attack_anim.is_valid(): attack_anim.kill()
 	player_visual.get_node("SwordArm").rotation=Vector3.ZERO
 	cooldown=0.0
@@ -731,6 +757,7 @@ func _physics_process(delta: float):
 			playtime_save_timer=0.0
 			save_playtime()
 	if not started or hp<=0:
+		cancel_attack()
 		update_camera(delta)
 		return
 	cooldown=maxf(0,cooldown-delta)
@@ -760,15 +787,24 @@ func _physics_process(delta: float):
 		if not is_demo_target(target) or not is_safe_position(target.position): target=null
 		hp=minf(max_hp(),hp+delta*6.0)
 		mp=minf(max_mp(),mp+delta*4.0)
-	if auto:
+	if auto and pending_skill<0:
 		if is_demo_target(target): target=null
-		if not is_instance_valid(target): choose_target()
-		if is_instance_valid(target):
-			var diff := target.position-player.position
-			if diff.length()>2.2: move=Vector3(diff.x,0,diff.z).normalized()
-			else: attack(0)
+		attack(0)
 		if auto_loot: collect()
+	var chasing := false
+	if pending_skill>=0:
+		try_pending_attack()
+		if pending_skill>=0 and combat_target_valid(pending_target):
+			var distance := player.position.distance_to(pending_target.position)
+			if distance>attack_range(pending_skill):
+				var diff := pending_target.position-player.position
+				move=Vector3(diff.x,0,diff.z).normalized()
+				# Never auto-run into the protected town to hit someone.
+				if is_safe_position(player.position+move*0.35): cancel_attack();move=Vector3.ZERO
+				else: chasing=true
+			else: move=Vector3.ZERO
 	var speed := (8.0 if run_mode else 4.5)*gm_move_multiplier
+	if chasing: speed=8.0*gm_move_multiplier
 	if dash_time>0: speed=18
 	player.velocity.x=move.x*speed
 	player.velocity.z=move.z*speed

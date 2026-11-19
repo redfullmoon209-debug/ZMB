@@ -25,16 +25,28 @@ func run():
 	touch(0,joy,true)
 	touch(1,buttons["ATTACK"].get_global_rect().get_center(),true)
 	touch(1,buttons["ATTACK"].get_global_rect().get_center(),false)
-	assert(world.attack_pose_count==1 and world.stick.y< -0.5)
+	assert(world.attack_pose_count==0 and world.stick.y< -0.5)
 	assert(enemy.get_meta("hp")==old_hp)
 	touch(0,joy,false)
 	await create_timer(0.16).timeout
-	assert(arm.rotation.length()>0.2)
+	assert(arm.rotation.length()<0.01)
 	await create_timer(0.35).timeout
 	assert(arm.rotation.length()<0.01)
 	world.player.position=Vector3(0,0,-18)
-	enemy.position=Vector3(0,0,-20)
+	enemy.position=Vector3(0,0,-27)
 	enemy.set_meta("hp",1000.0)
+	world.target=enemy
+	var before_chase: Vector3=world.player.position
+	world.attack(0)
+	assert(world.pending_skill==0 and world.attack_pose_count==0 and enemy.get_meta("hp")==1000.0)
+	for i in range(180):
+		await physics_frame
+		if world.attack_pose_count>0: break
+	assert(world.attack_pose_count==1 and enemy.get_meta("hp")==985.0)
+	assert(world.player.position.distance_to(before_chase)>1.0)
+	assert(world.pending_skill==-1)
+	world.player.position=Vector3(0,0,-18)
+	enemy.position=Vector3(0,0,-20)
 	world.target=enemy
 	for skill in range(4):
 		world.cooldown=0
@@ -51,7 +63,7 @@ func run():
 		assert(world.cooldown>0)
 		await create_timer(0.12).timeout
 		assert(arm.rotation.length()>0.1)
-	print("PASS: all four touch combat buttons animate and deal damage; town preview and simultaneous joystick protected")
+	print("PASS: safe zone has no attack pose, automatic approach, all four buttons only animate on real damage")
 	world.critical_chance=1.0
 	world.cooldown=0
 	old_hp=enemy.get_meta("hp")
