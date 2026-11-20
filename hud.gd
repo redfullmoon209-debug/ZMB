@@ -448,7 +448,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.50"%game.coins
+	stats.text="Gold %d   v0.1.51"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -880,7 +880,7 @@ func _process(delta):
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.50","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.51","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
