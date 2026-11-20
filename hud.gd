@@ -1,6 +1,7 @@
 extends CanvasLayer
 var game: Node3D
 var root: Control
+var studio_splash: Control
 var stats: Label
 var player_status: Control
 var status_name: Label
@@ -339,6 +340,9 @@ func _ready():
 	apply_settings()
 	game.zoom=clampf(float(config.get_value("settings","zoom",10.0)),4.0,16.0)
 	open_page("Start")
+	if DisplayServer.get_name()!="headless":
+		studio_splash=preload("res://studio_splash.gd").new()
+		root.add_child(studio_splash)
 	if OS.has_feature("web"):
 		browser_window = JavaScriptBridge.get_interface("window")
 		web_diagnostics = true
@@ -444,7 +448,7 @@ func refresh_player_status():
 	status_fill_clips[0].size.x=253.0*clampf(game.hp/game.max_hp(),0,1)
 	status_fill_clips[1].size.x=253.0*clampf(game.mp/game.max_mp(),0,1)
 	status_fill_clips[2].size.x=253.0*clampf(game.xp/100.0,0,1)
-	stats.text="Gold %d   v0.1.49"%game.coins
+	stats.text="Gold %d   v0.1.50"%game.coins
 	if status_portrait_male!=game.male:
 		status_portrait_male=game.male
 		status_portrait.scale=game.player_visual.scale
@@ -794,6 +798,9 @@ func _modal_scroll_input(event: InputEvent) -> bool:
 	return false
 
 func _input(event: InputEvent):
+	if is_instance_valid(studio_splash):
+		get_viewport().set_input_as_handled()
+		return
 	if not is_instance_valid(joystick):
 		return
 	if is_instance_valid(item_dialog) and item_dialog.visible: return
@@ -869,11 +876,11 @@ func _process(delta):
 		diagnostic_timer = 0.10
 		var controls := {}
 		for b in buttons: controls[b.get_meta("hud_key",b.text)] = _web_rect(b)
-		if is_instance_valid(start_button): controls["START"] = _web_rect(start_button)
+		if is_instance_valid(start_button) and not is_instance_valid(studio_splash): controls["START"] = _web_rect(start_button)
 		if is_instance_valid(close_button): controls["CLOSE"] = _web_rect(close_button)
 		var menu_rects := {}
 		for key in menu_items: menu_rects[key]=_web_rect(menu_items[key])
-		var d := {"version":"0.1.49","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
+		var d := {"version":"0.1.50","ready":true,"started":game.started,"safe":safe,"hp":game.hp,"mp":game.mp,"zoom":game.zoom,"camera_follow":game.camera_follow,"pitch":game.pitch,"yaw":game.yaw,"facing":game.player_visual.rotation.y,"page":selected_page,"menu_items":menu_rects,"scroll_rect":_web_rect(modal_scroll) if is_instance_valid(modal_scroll) else [],"scroll_value":modal_scroll.scroll_vertical if is_instance_valid(modal_scroll) else 0,"controls":controls,"stick":[game.stick.x,game.stick.y],"touches":captured_touches.size(),"position":[game.player.position.x,game.player.position.y,game.player.position.z],"velocity":[game.player.velocity.x,game.player.velocity.y,game.player.velocity.z]}
 		var payload := JSON.stringify(d)
 		if browser_window != null:
 			browser_window.zmbDiagnosticsJSON = payload
